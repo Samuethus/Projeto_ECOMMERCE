@@ -3,5 +3,7 @@
 project_id = "margelle"
 
 [functions.producao]
-# exige o token de sessão do usuário logado (Supabase Auth)
-verify_jwt = true
+# Desligado de propósito: com as chaves novas (sb_publishable / sb_secret) a
+# verificação do gateway rejeita as chamadas. A função valida a sessão do
+# usuário internamente (auth.getUser) e confere a tabela `equipe`.
+verify_jwt = false

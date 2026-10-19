@@ -33,6 +33,10 @@ jobs:
           cp -r assets _site/
           rm -f _site/assets/images/LEIA-ME.md
           touch _site/.nojekyll
+          # evita que o navegador use JS/CSS de uma versão anterior
+          V="${GITHUB_SHA::8}"
+          sed -i -E "s#(assets/(css|js)/[^\"]+\.(css|js))\"#\1?v=$V\"#g" _site/index.html
+          sed -i -E "s#(\./[a-z]+\.js)'#\1?v=$V'#g" _site/assets/js/producao/*.js
 
       - uses: actions/configure-pages@v5
 

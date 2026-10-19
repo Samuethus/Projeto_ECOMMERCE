@@ -55,13 +55,15 @@ Os nomes dos modelos do Gemini mudam com frequência. Confira os atuais em
 
 ### 4. Publicar a Edge Function
 **Pelo painel:** em **Edge Functions → Deploy a new function → Via Editor**, use o nome `producao`,
-cole o conteúdo de `functions/producao/index.ts` e publique. Deixe ligada a opção **Verify JWT**.
+cole o conteúdo de `functions/producao/index.ts` e publique. **Desligue** a opção **Verify JWT**
+(Details → Function configuration): com as chaves novas do Supabase ela bloqueia as chamadas. A própria
+função valida o login e a tabela `equipe`.
 
 **Ou pelo CLI** (requer o [Supabase CLI](https://supabase.com/docs/guides/cli)):
 ```bash
 supabase login
 supabase link --project-ref <PROJECT_REF>
-supabase functions deploy producao
+supabase functions deploy producao --no-verify-jwt
 supabase secrets set GEMINI_API_KEY=<chave>
 ```
 
