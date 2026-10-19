@@ -67,8 +67,9 @@ function iniciar(raiz) {
 
     const sessao = await estado.api.sessaoAtual();
     if (!sessao) return irPara('acesso');
-    await carregarUsuario(sessao);
+    const falha = await carregarUsuario(sessao);
     irPara(estado.arte ? 'arte' : 'foto');
+    if (falha) erro(falha);
   }
 
   function fechar() {
@@ -94,8 +95,9 @@ function iniciar(raiz) {
       $('[data-usuario-nome]').textContent = s.nome;
       estado.limite = s.limite;
       atualizarCota(s.limite - s.usadas);
+      return null;
     } catch (e) {
-      erro(e.message, 'foto');
+      return e.message;
     }
   }
 
@@ -113,8 +115,9 @@ function iniciar(raiz) {
     try {
       await estado.api.entrar(f.email.value.trim(), f.senha.value);
       f.reset();
-      await carregarUsuario(await estado.api.sessaoAtual());
+      const falha = await carregarUsuario(await estado.api.sessaoAtual());
       irPara('foto');
+      if (falha) erro(falha);
     } catch (err) {
       erro(err.message, 'acesso');
     } finally {

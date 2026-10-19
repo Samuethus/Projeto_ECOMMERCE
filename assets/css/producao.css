@@ -125,6 +125,7 @@
 .producao__nota { font-size: 13px; line-height: 20px; color: #7a7472; }
 .producao__erro { min-height: 0; font-size: 13px; color: #a3392f; }
 .producao__erro:empty { display: none; }
+.producao__erro--bloco { max-width: 560px; margin: 0 auto; text-align: center; }
 .producao__alerta {
   padding: 10px 14px;
   border-left: 2px solid var(--color-header-accent);

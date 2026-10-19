@@ -22,8 +22,20 @@ const GEMINI_IMAGE_SIZE = Deno.env.get("GEMINI_IMAGE_SIZE") ?? "2K"; // vazio = 
 const ALLOWED_ORIGINS = (Deno.env.get("ALLOWED_ORIGINS") ?? "*").split(",").map((s) => s.trim());
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
-const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
-const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+
+// Projetos novos usam chaves `sb_secret_...` (SUPABASE_SECRET_KEYS, em JSON);
+// projetos antigos usam a JWT `service_role`. Aceita as duas.
+function primeiraChave(json: string | undefined): string {
+  if (!json) return "";
+  try {
+    const obj = JSON.parse(json) as Record<string, string>;
+    return obj.default ?? Object.values(obj)[0] ?? "";
+  } catch {
+    return "";
+  }
+}
+const SUPABASE_SECRET_KEY = primeiraChave(Deno.env.get("SUPABASE_SECRET_KEYS")) ||
+  (Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "");
 
 const BUCKET = "producoes";
 const MAX_IMAGE_BYTES = 6 * 1024 * 1024;
@@ -236,21 +248,29 @@ async function gerarFundo(img: Imagem, analise: Analise): Promise<Imagem> {
 }
 
 // ---------------------------------------------------------------- acesso
-async function autenticar(req: Request): Promise<User> {
-  const authHeader = req.headers.get("Authorization");
-  if (!authHeader) throw new HttpError(401, "Faça login para usar a Produção.");
-  const userClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, { global: { headers: { Authorization: authHeader } } });
-  const { data, error } = await userClient.auth.getUser();
-  if (error || !data.user) throw new HttpError(401, "Sessão expirada. Faça login novamente.");
+async function autenticar(req: Request, admin: SupabaseClient): Promise<User> {
+  const token = (req.headers.get("Authorization") ?? "").replace(/^Bearer\s+/i, "").trim();
+  if (!token) throw new HttpError(401, "Faça login para usar a Produção.");
+  const { data, error } = await admin.auth.getUser(token);
+  if (error || !data.user) {
+    console.error("Falha ao validar sessão", error?.message);
+    throw new HttpError(401, "Sessão expirada. Faça login novamente.");
+  }
   return data.user;
 }
 
 async function carregarCota(admin: SupabaseClient, userId: string) {
   const { data: membro, error } = await admin.from("equipe").select("nome, limite_diario").eq("user_id", userId).maybeSingle();
-  if (error) throw new HttpError(500, "Erro ao consultar a equipe.");
+  if (error) {
+    console.error("Erro ao consultar equipe", error);
+    throw new HttpError(500, `Erro ao consultar a equipe: ${error.message}`);
+  }
   if (!membro) throw new HttpError(403, "Seu usuário não tem acesso à Produção.");
   const { data: usadas, error: e2 } = await admin.rpc("producoes_hoje", { p_user: userId });
-  if (e2) throw new HttpError(500, "Erro ao consultar o limite diário.");
+  if (e2) {
+    console.error("Erro em producoes_hoje", e2);
+    throw new HttpError(500, `Erro ao consultar o limite diário: ${e2.message}`);
+  }
   return { nome: membro.nome as string, limite: membro.limite_diario as number, usadas: (usadas as number) ?? 0 };
 }
 
@@ -260,8 +280,11 @@ Deno.serve(async (req) => {
   if (req.method !== "POST") return json(req, 405, { erro: "Método não permitido." });
 
   try {
-    const user = await autenticar(req);
-    const admin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false } });
+    if (!SUPABASE_SECRET_KEY) throw new HttpError(500, "Chave secreta do Supabase indisponível na função.");
+    const admin = createClient(SUPABASE_URL, SUPABASE_SECRET_KEY, {
+      auth: { persistSession: false, autoRefreshToken: false },
+    });
+    const user = await autenticar(req, admin);
     const cota = await carregarCota(admin, user.id);
     const body = await req.json().catch(() => ({}));
 
