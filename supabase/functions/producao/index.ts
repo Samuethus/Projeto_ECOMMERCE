@@ -95,8 +95,8 @@ Write every text value in Brazilian Portuguese.
   Include at least one neutral beige linen/cotton texture.
 - tecido_principal: the single most distinctive fabric/print of the main garment, described for an image generator
   (e.g. "algodão off-white com estampa de cavalos caramelo", "seda marrom com bolinhas brancas").
-- closeups: 5 or 6 details of the look that will be CROPPED from this photo for polaroid close-ups.
-  The first 5 items of the list are used in the final art, so ORDER MATTERS.
+- closeups: 6 or 7 details of the look that will be CROPPED from this photo for polaroid close-ups.
+  The first 6 items of the list are used in the final art, so ORDER MATTERS.
   FIRST look for these priority details, in this order, and include every one that is clearly visible in the photo:
     1. shoes ("sapatos");
     2. nails / manicure ("unhas");
@@ -110,7 +110,7 @@ Write every text value in Brazilian Portuguese.
     10. dress or skirt hem ("barra do vestido/saia");
     11. sleeve — cuff, puff, ruffle, buttons ("manga").
   Put the priority details found at the top of the list, in the order above.
-  ONLY IF fewer than 5 priority details are visible, complete the list with other details of the look
+  ONLY IF fewer than 6 priority details are visible, complete the list with other details of the look
   (e.g. "estampa da blusa", "textura do jeans"), preferring accessories and textures.
   Never include a detail that is not clearly visible, and avoid the face. For each one give:
     descricao: short label;
@@ -118,8 +118,9 @@ Write every text value in Brazilian Portuguese.
     (for prints/textures choose a clean area of the garment, at least 120 units wide and tall).
 `.trim();
 
-/* Fundo: só tecidos. Polaroids, cartão de cores e modelo são montados no site.
-   estilo "creme"   → base creme/bege predominante + poucos detalhes do tecido principal do look
+/* Fundo: sem pessoas nem objetos. Polaroids, cartão de cores e modelo são montados no site.
+   estilo "creme"   → colagem rústica creme/bege: papel rasgado, trama natural, flores secas
+                      e dobras do tecido principal do look nas bordas
    estilo "tecidos" → colagem com os tecidos listados na análise (editáveis) */
 function promptFundo(a: Analise, comReferencia = false): string {
   const comum = `
@@ -135,13 +136,23 @@ no accessories, no objects, no photos, no polaroids, no cards, no text, no logos
       ? "Use image 0 ONLY as reference for the main garment fabric and its print; never reproduce the person.\n"
       : "";
     return `
-${ref}Flat-lay fashion moodboard background, vertical composition, seen from above, in a CREAM AND BEIGE colour palette.
-About 85% of the frame: large overlapping, softly draped cream, ivory, sand and beige neutral fabrics —
-raw linen with frayed edges, natural cotton canvas, soft bouclé, light suede, torn beige paper strips.
-About 15% of the frame, only as small accents near the edges and corners: two or three folded swatches that echo
-the main garment fabric: ${destaque} — same print and texture, toned down to sit harmoniously in the cream palette.
-Keep the overall image light, warm, creamy and calm; avoid dark or saturated areas.
-${comum}`.trim();
+${ref}Rustic handmade flat-lay fashion moodboard background, vertical composition, seen from above,
+in a warm CREAM AND BEIGE palette that mixes fabric, paper and dried flowers, like a scrapbook collage.
+Base: warm cream textured paper and raw natural linen covering the whole frame.
+Layered on top, mostly towards the edges and corners:
+- large torn paper pieces with ragged fibrous edges in ivory, sand and beige, plus one or two kraft-brown torn pieces
+  in the lower right area, overlapping at different angles;
+- a patch of chunky natural woven jute / bouclé knit texture in the upper-left corner, continuing down the left edge;
+- soft draped folds of the main garment fabric: ${destaque} — same colour, print and texture as the outfit —
+  along the right edge, in the top-right corner and in the bottom-right corner, about 15 to 20% of the frame;
+- a few delicate sprigs of dried baby's breath and tiny white wildflowers with thin olive-brown stems,
+  lying flat near the left edge (middle and bottom) and near the right edge.
+The centre of the frame stays calm and light (plain cream paper and soft torn paper), so a photo of a model
+can be placed on top later. Keep the overall image light, warm and creamy; avoid dark or saturated areas.
+Soft professional studio lighting, gentle realistic shadows under the paper and fabric layers,
+photorealistic, sharp texture detail, high-end fashion e-commerce look.
+No people, no faces, no hands, no mannequins, no clothes being worn, no shoes, no bags, no jewellery,
+no accessories, no other objects, no photos, no polaroids, no cards, no paint swatches, no text, no logos.`.trim();
   }
 
   const tecidos = a.tecidos_fundo.join("; ");
@@ -386,8 +397,9 @@ async function gerarFundo(img: Imagem, ref: Imagem | null, analise: Analise): Pr
 }
 
 /* Close-up de polaroid: imagem NOVA gerada a partir do detalhe recortado (imagem 0)
-   e da foto do look inteiro (imagem 1), fiel a cor, material, estampa e ferragens. */
-async function gerarCloseup(detalhe: Imagem, look: Imagem | null, descricao: string): Promise<Imagem> {
+   e da foto do look inteiro (imagem 1), fiel a cor, material, estampa e ferragens.
+   `aspecto` (largura/altura) = proporção da polaroid onde o close-up será colocado. */
+async function gerarCloseup(detalhe: Imagem, look: Imagem | null, descricao: string, aspecto: number): Promise<Imagem> {
   const prompt = `
 Editorial macro close-up photograph of: ${descricao}.
 Reproduce it exactly as it appears in image 0${look ? " (worn in the outfit shown in image 1)" : ""}:
@@ -397,7 +409,11 @@ When it is jewellery, a bag or shoes, it may be worn on the body or placed on fa
 Soft natural studio light, shallow depth of field, warm neutral tones, high-end fashion e-commerce look, photorealistic.
 Never show a full face. No text, no logos, no watermark, no frame or border.
 `.trim();
-  return await chamarCloudflare(prompt, look ? [detalhe, look] : [detalhe], 768, 864);
+  // mesma área de 768×864, na proporção pedida, em múltiplos de 16
+  const area = 768 * 864;
+  const largura = Math.round(Math.sqrt(area * aspecto) / 16) * 16;
+  const altura = Math.round(Math.sqrt(area / aspecto) / 16) * 16;
+  return await chamarCloudflare(prompt, look ? [detalhe, look] : [detalhe], largura, altura);
 }
 
 /* Cloudflare Workers AI (cota diária gratuita).
@@ -544,7 +560,9 @@ Deno.serve(async (req) => {
         const ref = body.ref ? validarImagem(body.ref) : null;
         const descricao = String(body.descricao ?? "").trim().slice(0, 200);
         if (!descricao) throw new HttpError(400, "Descreva o detalhe do close-up.");
-        const imagem = await gerarCloseup(detalhe, ref, descricao);
+        const pedido = Number(body.aspecto);
+        const aspecto = Number.isFinite(pedido) ? Math.min(2, Math.max(0.5, pedido)) : 768 / 864;
+        const imagem = await gerarCloseup(detalhe, ref, descricao, aspecto);
         return json(req, 200, { imagem });
       }
 

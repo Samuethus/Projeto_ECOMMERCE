@@ -37,7 +37,7 @@ async function chamar(acao, payload = {}) {
 export const status = () => chamar('status');
 export const analisar = (imagem) => chamar('analisar', { imagem });
 export const gerar = (imagem, ref, analise) => chamar('gerar', { imagem, ref, analise });
-export const closeup = (detalhe, ref, descricao) => chamar('closeup', { detalhe, ref, descricao });
+export const closeup = (detalhe, ref, descricao, aspecto) => chamar('closeup', { detalhe, ref, descricao, aspecto });
 
 /* Salva a arte final no Storage e registra no histórico (melhor esforço) */
 export async function salvarFinal(producaoId, blob) {

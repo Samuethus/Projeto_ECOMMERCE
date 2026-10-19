@@ -1,14 +1,14 @@
 /* MARGELLE · Produção — montagem da arte final (canvas)
    Camadas, de baixo para cima:
-     1. fundo de tecidos gerado pela IA
+     1. fundo gerado pela IA (colagem rústica de papel, tecido e flores secas, ou só tecidos)
      2. polaroids com close-ups recortados da foto ORIGINAL (fiéis ao look)
      3. cartão de papel bege com as 5 pinceladas de cor (desenhado aqui, cores exatas)
      4. modelo recortada da foto ORIGINAL, centralizada, com sombra suave
    As proporções seguem as referências em docs/referenfica produção (formato 4:5). */
 
 export const LAYOUT = {
-  /* cartão de cores: fração da largura/altura da arte */
-  cartao: { x: 0.11, y: 0.235, w: 0.235, h: 0.315, rotacao: -2.5 },
+  /* cartão de cores: fração da largura/altura da arte (à esquerda, entre as polaroids) */
+  cartao: { x: 0.055, y: 0.168, w: 0.25, h: 0.355, rotacao: -3 },
   /* modelo: o corpo ocupa a faixa vertical entre as margens (10% em cima e embaixo),
      centralizada; larguraMax é só uma trava para poses muito abertas não saírem da arte */
   modelo: { margemTopo: 0.1, margemBase: 0.1, larguraMax: 0.92, centroX: 0.5 },
@@ -146,28 +146,33 @@ export function desenharCartaoCores(ctx, W, H, cores) {
 
   desenharPapel(ctx, 0, 0, w, h, rnd);
 
-  const margemX = w * 0.11;
-  const margemY = h * 0.055;
-  const vao = h * 0.035;
+  // pinceladas um pouco deslocadas para a esquerda, com bastante papel aparente em volta
+  const margemEsq = w * 0.15;
+  const margemDir = w * 0.17;
+  const margemY = h * 0.075;
+  const vao = h * 0.045;
   const alturaFaixa = (h - margemY * 2 - vao * (cores.length - 1)) / cores.length;
   cores.forEach((cor, i) => {
-    desenharPincelada(ctx, margemX, margemY + i * (alturaFaixa + vao), w - margemX * 2, alturaFaixa, cor.hex, rnd);
+    desenharPincelada(ctx, margemEsq, margemY + i * (alturaFaixa + vao), w - margemEsq - margemDir, alturaFaixa, cor.hex, rnd);
   });
   ctx.restore();
 }
 
 /* ---------------------------------------------------------- polaroids */
-/* posições: centro (fração da arte), largura (fração da largura) e rotação (graus).
-   Ficam nas bordas, como nas referências; a modelo é desenhada por cima. */
+/* posições: centro (fração da arte), largura da moldura (fração da largura), rotação (graus)
+   e proporção da foto (largura/altura). Copiadas da arte de referência do "Padrão Creme/Bege":
+   3 de cada lado, nas bordas; a modelo é desenhada por cima.
+   A ordem segue a prioridade dos close-ups: o 1º (sapatos) vai embaixo à esquerda. */
 export const POLAROIDS = [
-  { x: 0.14, y: 0.125, w: 0.225, rot: -2 },   // alto à esquerda
-  { x: 0.86, y: 0.22, w: 0.27, rot: 3 },      // alto à direita
-  { x: 0.83, y: 0.545, w: 0.3, rot: 2 },      // direita, meio
-  { x: 0.205, y: 0.675, w: 0.255, rot: 2 },   // esquerda, abaixo do cartão
-  { x: 0.825, y: 0.83, w: 0.255, rot: -1.5 }, // embaixo à direita
+  { x: 0.205, y: 0.845, w: 0.275, rot: -3, aspecto: 0.84 }, // embaixo à esquerda
+  { x: 0.845, y: 0.77, w: 0.29, rot: 3, aspecto: 0.95 },    // embaixo à direita
+  { x: 0.838, y: 0.163, w: 0.3, rot: 4, aspecto: 0.95 },    // alto à direita
+  { x: 0.14, y: 0.617, w: 0.28, rot: 4, aspecto: 1.23 },    // esquerda, abaixo do cartão
+  { x: 0.866, y: 0.43, w: 0.235, rot: 2, aspecto: 0.78 },   // direita, meio
+  { x: 0.225, y: 0.082, w: 0.37, rot: 3, aspecto: 1.57 },   // alto à esquerda, saindo da borda
 ];
-/* proporção das fotos das polaroids (largura/altura) */
-export const ASPECTO_POLAROID = 0.89;
+/* moldura (frações da largura): fina em cima e nas laterais, mais larga embaixo */
+const MOLDURA = { lado: 0.045, base: 0.12, cor: '#ece4d4' };
 
 /**
  * Recorta da foto ORIGINAL o detalhe indicado pela análise (close-up fiel ao look).
@@ -199,10 +204,11 @@ export function recortarDetalhe(foto, caixa, aspecto = 1) {
 
 function desenharPolaroid(ctx, W, H, slot, imagem, rnd) {
   const w = slot.w * W;
-  const borda = w * 0.035;
-  const fotoW = w - borda * 2;
-  const fotoH = fotoW / (imagem.width / imagem.height);
-  const h = fotoH + borda * 2;
+  const lado = w * MOLDURA.lado;
+  const fotoW = w - lado * 2;
+  const fotoH = fotoW / slot.aspecto;
+  const h = lado + fotoH + w * MOLDURA.base;
+  const x0 = -w / 2, y0 = -h / 2;
 
   ctx.save();
   ctx.translate(slot.x * W, slot.y * H);
@@ -211,17 +217,30 @@ function desenharPolaroid(ctx, W, H, slot, imagem, rnd) {
   ctx.shadowBlur = 20;
   ctx.shadowOffsetX = 3;
   ctx.shadowOffsetY = 8;
-  ctx.fillStyle = '#efe8dc';
-  ctx.fillRect(-w / 2, -h / 2, w, h);
+  ctx.fillStyle = MOLDURA.cor;
+  ctx.fillRect(x0, y0, w, h);
   ctx.shadowColor = 'transparent';
+
+  // fibras discretas no papel da moldura
+  for (let i = 0; i < (w * h) / 60; i++) {
+    ctx.fillStyle = rnd() > 0.5 ? 'rgba(255,255,255,.16)' : 'rgba(120,96,70,.07)';
+    ctx.fillRect(x0 + rnd() * w, y0 + rnd() * h, 1 + rnd() * 1.4, 1);
+  }
+
+  // foto preenchendo a janela sem distorcer (corta o excesso no centro)
+  const iw = imagem.naturalWidth || imagem.width;
+  const ih = imagem.naturalHeight || imagem.height;
+  const escala = Math.max(fotoW / iw, fotoH / ih);
+  const sw = fotoW / escala, sh = fotoH / escala;
   ctx.imageSmoothingQuality = 'high';
-  ctx.drawImage(imagem, -w / 2 + borda, -h / 2 + borda, fotoW, fotoH);
+  ctx.drawImage(imagem, (iw - sw) / 2, (ih - sh) / 2, sw, sh, x0 + lado, y0 + lado, fotoW, fotoH);
+
   // leve brilho de papel fotográfico
-  const brilho = ctx.createLinearGradient(-w / 2, -h / 2, w / 2, h / 2);
+  const brilho = ctx.createLinearGradient(x0, y0, w / 2, h / 2);
   brilho.addColorStop(0, `rgba(255,255,255,${0.06 + rnd() * 0.05})`);
   brilho.addColorStop(1, 'rgba(255,255,255,0)');
   ctx.fillStyle = brilho;
-  ctx.fillRect(-w / 2 + borda, -h / 2 + borda, fotoW, fotoH);
+  ctx.fillRect(x0 + lado, y0 + lado, fotoW, fotoH);
   ctx.restore();
 }
 

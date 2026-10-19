@@ -3,7 +3,7 @@
    Supabase e o recorte só são carregados quando o wizard é aberto. */
 import { CONFIG, configurado } from './config.js';
 import { arquivoParaImagem, redimensionar, canvasParaPayload, payloadParaSrc, carregarImagem, canvasParaBlob, baixar } from './imagem.js';
-import { comporArte, recortarDetalhe, POLAROIDS, ASPECTO_POLAROID } from './composicao.js';
+import { comporArte, recortarDetalhe, POLAROIDS } from './composicao.js';
 
 const raiz = document.getElementById('producao');
 if (raiz) iniciar(raiz);
@@ -330,13 +330,15 @@ function iniciar(raiz) {
 
       // fundo e close-ups em paralelo; um close-up que falhar vira recorte da foto
       const pedidoFundo = contar(estado.api.gerar(estado.envio, ref, analise));
-      const pedidosCloseups = escolhidos.map((c) => {
-        const detalhe = canvasParaPayload(redimensionar(recortarDetalhe(estado.foto, c.caixa, ASPECTO_POLAROID), CONFIG.referenciaMaxLado));
-        return contar(estado.api.closeup(detalhe, ref, c.descricao))
+      // cada close-up já nasce na proporção da polaroid em que será colocado
+      const pedidosCloseups = escolhidos.map((c, i) => {
+        const aspecto = POLAROIDS[i].aspecto;
+        const detalhe = canvasParaPayload(redimensionar(recortarDetalhe(estado.foto, c.caixa, aspecto), CONFIG.referenciaMaxLado));
+        return contar(estado.api.closeup(detalhe, ref, c.descricao, aspecto))
           .then((res) => carregarImagem(payloadParaSrc(res.imagem)))
           .catch((e) => {
             console.warn('Close-up não gerado, usando recorte da foto:', c.descricao, e);
-            return recortarDetalhe(estado.foto, c.caixa, ASPECTO_POLAROID);
+            return recortarDetalhe(estado.foto, c.caixa, aspecto);
           });
       });
 
