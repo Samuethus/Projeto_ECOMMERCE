@@ -4,8 +4,8 @@
    controlado pelo login, pelas regras RLS e pela tabela `equipe`.
    NUNCA coloque aqui a chave service_role nem a chave do Gemini. */
 export const CONFIG = {
-  supabaseUrl: 'https://SEU-PROJETO.supabase.co',
-  supabaseAnonKey: 'SUA-CHAVE-ANON-OU-PUBLISHABLE',
+  supabaseUrl: 'https://fxennfueoqdfhmnbrsrf.supabase.co',
+  supabaseAnonKey: 'sb_publishable_VuVhJ2vSdVXUW9nQVSpXfg_bSoCs5cZ',
   funcao: 'producao',
   bucket: 'producoes',
 
