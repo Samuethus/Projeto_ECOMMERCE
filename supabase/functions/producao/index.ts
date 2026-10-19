@@ -43,6 +43,7 @@ const BUCKET = "producoes";
 const MAX_IMAGE_BYTES = 6 * 1024 * 1024;
 const MIME_ACEITOS = new Set(["image/jpeg", "image/png", "image/webp"]);
 const GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/models";
+const TEMPORARIOS = new Set([429, 500, 503, 504]);
 
 // ---------------------------------------------------------------- tipos
 type Imagem = { mime: string; data: string };
@@ -195,12 +196,22 @@ function base64ParaBytes(b64: string): Uint8Array {
 // deno-lint-ignore no-explicit-any
 async function chamarGemini(modelo: string, body: unknown): Promise<any> {
   if (!GEMINI_API_KEY) throw new HttpError(500, "GEMINI_API_KEY não configurada na função.");
-  const res = await fetch(`${GEMINI_URL}/${modelo}:generateContent`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", "x-goog-api-key": GEMINI_API_KEY },
-    body: JSON.stringify(body),
-  });
-  const data = await res.json().catch(() => ({}));
+  const corpo = JSON.stringify(body);
+  let res: Response;
+  // deno-lint-ignore no-explicit-any
+  let data: any;
+  // erros temporários (sobrecarga/limite de taxa): até 3 tentativas com espera crescente
+  for (let tentativa = 1; ; tentativa++) {
+    res = await fetch(`${GEMINI_URL}/${modelo}:generateContent`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-goog-api-key": GEMINI_API_KEY },
+      body: corpo,
+    });
+    data = await res.json().catch(() => ({}));
+    if (!TEMPORARIOS.has(res.status) || tentativa === 3) break;
+    console.warn(`Gemini ${modelo} respondeu ${res.status}; nova tentativa ${tentativa + 1}/3`);
+    await new Promise((r) => setTimeout(r, tentativa * 2000));
+  }
   if (!res.ok) {
     console.error("Gemini erro", res.status, JSON.stringify(data).slice(0, 2000));
     throw new HttpError(502, `Falha no serviço de IA (${res.status}). ${data?.error?.message ?? ""}`.trim(), res.status);
@@ -249,13 +260,25 @@ async function chamarModelo(tipo: TipoModelo, body: unknown): Promise<{ data: an
   try {
     return { data: await chamarGemini(atual, body), modelo: atual };
   } catch (err) {
-    // 404 = modelo inexistente/descontinuado para esta conta: tenta o equivalente mais novo
-    if (!(err instanceof HttpError) || err.statusIA !== 404) throw err;
-    const substituto = melhorModelo(await listarModelos(), MODELOS[tipo].padrao);
-    if (!substituto || substituto === atual) throw err;
-    console.warn(`Modelo ${atual} indisponível; usando ${substituto}`);
-    emUso[tipo] = substituto;
-    return { data: await chamarGemini(substituto, body), modelo: substituto };
+    if (!(err instanceof HttpError) || !err.statusIA) throw err;
+    const descontinuado = err.statusIA === 404;
+    const sobrecarregado = TEMPORARIOS.has(err.statusIA);
+    if (!descontinuado && !sobrecarregado) throw err;
+
+    // 404 → o equivalente mais novo; sobrecarga → o melhor modelo diferente do atual
+    const candidatos = (await listarModelos()).filter((n) => n !== atual);
+    const substituto = melhorModelo(candidatos, MODELOS[tipo].padrao);
+    if (!substituto) throw err;
+    console.warn(`Modelo ${atual} ${descontinuado ? "indisponível" : "sobrecarregado"}; usando ${substituto}`);
+    if (descontinuado) emUso[tipo] = substituto; // sobrecarga é passageira: não troca de vez
+    try {
+      return { data: await chamarGemini(substituto, body), modelo: substituto };
+    } catch (err2) {
+      if (err2 instanceof HttpError && err2.statusIA && TEMPORARIOS.has(err2.statusIA)) {
+        throw new HttpError(503, "O serviço de IA está sobrecarregado no momento. Aguarde 1 minuto e tente novamente.");
+      }
+      throw err2;
+    }
   }
 }
 

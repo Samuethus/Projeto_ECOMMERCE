@@ -185,6 +185,8 @@ function iniciar(raiz) {
       return;
     }
 
+    const botaoRepetir = $('[data-acao="reanalisar"]');
+    botaoRepetir.hidden = true;
     editor.hidden = true;
     progresso.hidden = false;
     $$('[data-progresso-item]').forEach((p) => p.classList.remove('is-done', 'is-error'));
@@ -194,9 +196,13 @@ function iniciar(raiz) {
     const marcar = (item, classe) => $(`[data-progresso-item="${item}"]`).classList.add(classe);
 
     try {
+      // o recorte é reaproveitado ao tentar de novo (só a análise é refeita)
+      const recorte = estado.modelo
+        ? Promise.resolve(estado.modelo)
+        : estado.recorte.recortarModelo(estado.foto, (f) => { pct.textContent = `${Math.round(f * 100)}%`; });
       const [modelo, resposta] = await Promise.all([
-        estado.recorte.recortarModelo(estado.foto, (f) => { pct.textContent = `${Math.round(f * 100)}%`; })
-          .then((m) => { marcar('recorte', 'is-done'); pct.textContent = ''; return m; })
+        recorte
+          .then((m) => { marcar('recorte', 'is-done'); pct.textContent = ''; estado.modelo = m; return m; })
           .catch((e) => { marcar('recorte', 'is-error'); throw e; }),
         estado.api.analisar(estado.envio)
           .then((r) => { marcar('analise', 'is-done'); return r; })
@@ -210,6 +216,7 @@ function iniciar(raiz) {
       botaoGerar.disabled = false;
     } catch (err) {
       erro(err.message || 'Falha na análise. Tente novamente.', 'analise');
+      botaoRepetir.hidden = false;
     } finally {
       estado.ocupado = false;
     }
@@ -323,6 +330,7 @@ function iniciar(raiz) {
   /* ---------------------------------------------------------- ações */
   const acoes = {
     analisar,
+    reanalisar: analisar,
     gerar,
     regerar: gerar,
     'voltar-foto': () => irPara('foto'),
