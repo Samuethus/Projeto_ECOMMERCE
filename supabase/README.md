@@ -5,7 +5,9 @@ O menu **Produção** do site abre um wizard que monta posts de Instagram (4:5, 
 1. A pessoa da equipe faz login e envia a foto da modelo.
 2. O navegador recorta a modelo da foto original. Rosto e corpo não passam pela IA.
 3. A Edge Function `producao` pede ao **Gemini** (plano gratuito) a análise do look: peças, 5 cores,
-   tecidos e a posição dos detalhes na foto. A pessoa revisa, edita e escolhe os close-ups.
+   tecidos e a posição dos detalhes na foto. A pessoa revisa, edita, escolhe os close-ups e o estilo do fundo:
+   - **Padrão Creme/Bege** (padrão): tecidos creme e bege predominantes, com detalhes do tecido principal da roupa;
+   - **Padrão Tecidos**: colagem com os tecidos do look, editáveis.
 4. A função gera, no **FLUX.2 [klein]** da **Cloudflare Workers AI** (cota diária gratuita) e usando a foto
    como referência, o **fundo de tecidos** inspirado no look e um **close-up novo** de cada detalhe escolhido.
 5. O navegador monta a arte final: fundo, polaroids com os close-ups, cartão de cores e modelo recortada.

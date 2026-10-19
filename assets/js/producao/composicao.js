@@ -10,7 +10,7 @@ export const LAYOUT = {
   /* cartão de cores: fração da largura/altura da arte */
   cartao: { x: 0.11, y: 0.235, w: 0.235, h: 0.315, rotacao: -2.5 },
   /* modelo: altura máxima, base e largura máxima (frações) */
-  modelo: { altura: 0.95, base: 0.99, larguraMax: 0.5, centroX: 0.5 },
+  modelo: { altura: 0.95, base: 0.99, larguraMax: 0.56, centroX: 0.5 },
   papel: '#e6ddcd',
 };
 
@@ -229,12 +229,38 @@ export function desenharPolaroids(ctx, W, H, detalhes) {
   detalhes.slice(0, POLAROIDS.length).forEach((img, i) => desenharPolaroid(ctx, W, H, POLAROIDS[i], img, rnd));
 }
 
+/* Eixo vertical do corpo (px no recorte): média horizontal da cabeça e do tronco
+   (faixa de 3% a 40% da altura). Bolsa, braço aberto ou cabelo solto de um lado
+   não deslocam a modelo do centro da arte. */
+const eixos = new WeakMap();
+export function eixoDoCorpo(modelo) {
+  if (eixos.has(modelo)) return eixos.get(modelo);
+  const ctx = modelo.getContext('2d', { willReadFrequently: true });
+  const y0 = Math.floor(modelo.height * 0.03);
+  const y1 = Math.floor(modelo.height * 0.4);
+  const { data, width } = ctx.getImageData(0, y0, modelo.width, y1 - y0);
+  let soma = 0, peso = 0;
+  for (let i = 3, px = 0; i < data.length; i += 4, px++) {
+    const a = data[i];
+    if (a > 128) {
+      soma += (px % width) * a;
+      peso += a;
+    }
+  }
+  const eixo = peso ? soma / peso : modelo.width / 2;
+  eixos.set(modelo, eixo);
+  return eixo;
+}
+
 export function desenharModelo(ctx, W, H, modelo) {
   const m = LAYOUT.modelo;
-  const escala = Math.min((m.altura * H) / modelo.height, (m.larguraMax * W) / modelo.width);
+  const eixo = eixoDoCorpo(modelo);
+  // a largura máxima vale para cada lado a partir do eixo, para a modelo nunca sair do centro
+  const meiaLargura = Math.max(eixo, modelo.width - eixo);
+  const escala = Math.min((m.altura * H) / modelo.height, (m.larguraMax * W) / 2 / meiaLargura);
   const dw = modelo.width * escala;
   const dh = modelo.height * escala;
-  const dx = m.centroX * W - dw / 2;
+  const dx = m.centroX * W - eixo * escala;
   const dy = m.base * H - dh;
 
   ctx.save();

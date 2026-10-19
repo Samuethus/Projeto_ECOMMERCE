@@ -244,6 +244,8 @@ function iniciar(raiz) {
     });
 
     $('[data-tecidos]').value = a.tecidos_fundo.join('\n');
+    $('[data-estilo][value="creme"]').checked = true;
+    mostrarTecidos();
 
     // close-ups: recortes da foto original, marcados por padrão até o limite de polaroids
     const lista = $('[data-closeups]');
@@ -271,6 +273,13 @@ function iniciar(raiz) {
   }
   $('[data-closeups]').addEventListener('change', limitarCloseups);
 
+  /* estilo do fundo: a lista de tecidos só aparece no "Padrão Tecidos" */
+  const estiloEscolhido = () => $('[data-estilo]:checked')?.value ?? 'creme';
+  function mostrarTecidos() {
+    $('[data-bloco-tecidos]').hidden = estiloEscolhido() !== 'tecidos';
+  }
+  $$('[data-estilo]').forEach((r) => r.addEventListener('change', mostrarTecidos));
+
   function lerEditor() {
     const linhas = (sel) => $(sel).value.split('\n').map((s) => s.trim()).filter(Boolean).slice(0, 6);
     const cores = $$('[data-paleta] li').map((li) => ({
@@ -278,13 +287,19 @@ function iniciar(raiz) {
       nome: li.querySelector('[data-cor-nome]').value.trim() || li.querySelector('[data-cor-hex]').value,
     }));
     const closeups = $$('[data-closeup]:checked').map((c) => estado.analise.closeups[Number(c.dataset.closeup)]);
-    return { ...estado.analise, cores, tecidos_fundo: linhas('[data-tecidos]'), closeups_escolhidos: closeups };
+    return {
+      ...estado.analise,
+      cores,
+      estilo_fundo: estiloEscolhido(),
+      tecidos_fundo: linhas('[data-tecidos]'),
+      closeups_escolhidos: closeups,
+    };
   }
 
   /* ---------------------------------------------------------- 03 · geração */
   async function gerar() {
     const analise = lerEditor();
-    if (!analise.tecidos_fundo.length) {
+    if (analise.estilo_fundo === 'tecidos' && !analise.tecidos_fundo.length) {
       return erro('Informe ao menos um tecido para o fundo.', 'analise');
     }
     estado.analise = analise;

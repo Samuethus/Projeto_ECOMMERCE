@@ -64,6 +64,10 @@ type Analise = {
   pecas: { nome: string; descricao: string }[];
   cores: { nome: string; hex: string }[];
   tecidos_fundo: string[];
+  /* tecido/estampa mais marcante da roupa (base dos detalhes do "Padrão Creme/Bege") */
+  tecido_principal?: string;
+  /* escolhido no site: "creme" (padrão) ou "tecidos" */
+  estilo_fundo?: "creme" | "tecidos";
   /* caixa = [ymin, xmin, ymax, xmax] normalizada 0–1000 sobre a foto enviada */
   closeups: { descricao: string; caixa: number[] }[];
 };
@@ -89,6 +93,8 @@ Write every text value in Brazilian Portuguese.
 - tecidos_fundo: 3 to 5 fabric/material textures for the collage background, derived from the look
   (e.g. "seda marrom com bolinhas brancas", "jeans azul claro", "linho bege desfiado", "couro vinho").
   Include at least one neutral beige linen/cotton texture.
+- tecido_principal: the single most distinctive fabric/print of the main garment, described for an image generator
+  (e.g. "algodão off-white com estampa de cavalos caramelo", "seda marrom com bolinhas brancas").
 - closeups: 5 or 6 details of the look that will be CROPPED from this photo for polaroid close-ups
   (e.g. "estampa da blusa", "textura do jeans", "bolsa e ferragem", "sapato", "brincos", "pulseira").
   Prefer accessories and textures, avoid the face. For each one give:
@@ -97,8 +103,32 @@ Write every text value in Brazilian Portuguese.
     (for prints/textures choose a clean area of the garment, at least 120 units wide and tall).
 `.trim();
 
-/* Fundo: só tecidos. Polaroids, cartão de cores e modelo são montados no site. */
+/* Fundo: só tecidos. Polaroids, cartão de cores e modelo são montados no site.
+   estilo "creme"   → base creme/bege predominante + poucos detalhes do tecido principal do look
+   estilo "tecidos" → colagem com os tecidos listados na análise (editáveis) */
 function promptFundo(a: Analise, comReferencia = false): string {
+  const comum = `
+Soft professional studio lighting, gentle shadows between the layers, warm neutral editorial aesthetic,
+high-end fashion e-commerce look, photorealistic, sharp detail.
+The centre of the frame shows mostly calm fabric, so a photo of a model can be placed on top later.
+No people, no faces, no hands, no mannequins, no clothes being worn, no shoes, no bags, no jewellery,
+no accessories, no objects, no photos, no polaroids, no cards, no text, no logos.`;
+
+  if (a.estilo_fundo !== "tecidos") {
+    const destaque = (a.tecido_principal || a.tecidos_fundo[0] || "the main print of the outfit").trim();
+    const ref = comReferencia
+      ? "Use image 0 ONLY as reference for the main garment fabric and its print; never reproduce the person.\n"
+      : "";
+    return `
+${ref}Flat-lay fashion moodboard background, vertical composition, seen from above, in a CREAM AND BEIGE colour palette.
+About 85% of the frame: large overlapping, softly draped cream, ivory, sand and beige neutral fabrics —
+raw linen with frayed edges, natural cotton canvas, soft bouclé, light suede, torn beige paper strips.
+About 15% of the frame, only as small accents near the edges and corners: two or three folded swatches that echo
+the main garment fabric: ${destaque} — same print and texture, toned down to sit harmoniously in the cream palette.
+Keep the overall image light, warm, creamy and calm; avoid dark or saturated areas.
+${comum}`.trim();
+  }
+
   const tecidos = a.tecidos_fundo.join("; ");
   const ref = comReferencia
     ? "Use image 0 ONLY as reference for the colours, prints and materials of the outfit — " +
@@ -107,12 +137,8 @@ function promptFundo(a: Analise, comReferencia = false): string {
   return `
 ${ref}Flat-lay fashion moodboard background, vertical composition, seen from above.
 Large overlapping, softly draped and folded fabric swatches filling the entire frame edge to edge: ${tecidos}.
-Realistic macro fabric textures (weave, frayed edges, leather grain, prints), soft professional studio lighting,
-gentle shadows between the layers, warm neutral editorial aesthetic, high-end fashion e-commerce look,
-photorealistic, sharp detail.
-The centre of the frame shows mostly calm fabric, so a photo of a model can be placed on top later.
-No people, no faces, no hands, no mannequins, no clothes being worn, no objects, no photos, no text, no logos.
-`.trim();
+Realistic macro fabric textures (weave, frayed edges, leather grain, prints).
+${comum}`.trim();
 }
 
 const SCHEMA_ANALISE = {
@@ -137,6 +163,7 @@ const SCHEMA_ANALISE = {
       },
     },
     tecidos_fundo: { type: "ARRAY", items: { type: "STRING" } },
+    tecido_principal: { type: "STRING" },
     closeups: {
       type: "ARRAY",
       items: {
@@ -149,7 +176,7 @@ const SCHEMA_ANALISE = {
       },
     },
   },
-  required: ["foto_adequada", "problemas", "pecas", "cores", "tecidos_fundo", "closeups"],
+  required: ["foto_adequada", "problemas", "pecas", "cores", "tecidos_fundo", "tecido_principal", "closeups"],
 };
 
 // ---------------------------------------------------------------- utilitários
@@ -188,7 +215,12 @@ function validarAnalise(a: unknown): Analise {
   if (!x || !Array.isArray(x.cores) || x.cores.length !== 5 || !x.cores.every((c) => HEX.test(c?.hex ?? ""))) {
     throw new HttpError(400, "A paleta precisa ter exatamente 5 cores válidas.");
   }
-  if (!lista(x.tecidos_fundo, 1, 6)) throw new HttpError(400, "Informe de 1 a 6 tecidos para o fundo.");
+  x.estilo_fundo = x.estilo_fundo === "tecidos" ? "tecidos" : "creme";
+  if (!Array.isArray(x.tecidos_fundo)) x.tecidos_fundo = [];
+  if (x.estilo_fundo === "tecidos" && !lista(x.tecidos_fundo, 1, 6)) {
+    throw new HttpError(400, "Informe de 1 a 6 tecidos para o fundo.");
+  }
+  x.tecido_principal = String(x.tecido_principal ?? "").slice(0, 200);
   if (!Array.isArray(x.pecas)) x.pecas = [];
   if (!Array.isArray(x.closeups)) x.closeups = [];
   return x;

@@ -365,6 +365,28 @@
               </fieldset>
 
               <fieldset class="bloco">
+                <legend>Estilo do fundo</legend>
+                <div class="estilos" role="radiogroup">
+                  <label class="estilo">
+                    <input type="radio" name="estilo-fundo" value="creme" data-estilo checked>
+                    <span class="estilo__amostra estilo__amostra--creme" aria-hidden="true"></span>
+                    <span class="estilo__texto">
+                      <strong>Padrão Creme/Bege</strong>
+                      Tons creme e bege predominantes, com detalhes que lembram o tecido da roupa.
+                    </span>
+                  </label>
+                  <label class="estilo">
+                    <input type="radio" name="estilo-fundo" value="tecidos" data-estilo>
+                    <span class="estilo__amostra estilo__amostra--tecidos" aria-hidden="true"></span>
+                    <span class="estilo__texto">
+                      <strong>Padrão Tecidos</strong>
+                      Colagem com os tecidos do look, que você escolhe logo abaixo.
+                    </span>
+                  </label>
+                </div>
+              </fieldset>
+
+              <fieldset class="bloco" data-bloco-tecidos hidden>
                 <legend>Tecidos do fundo</legend>
                 <textarea rows="4" data-tecidos aria-describedby="dica-tecidos"></textarea>
                 <p class="producao__nota" id="dica-tecidos">Um tecido por linha. Eles formam o fundo da arte.</p>
