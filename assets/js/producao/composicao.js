@@ -9,8 +9,9 @@
 export const LAYOUT = {
   /* cartão de cores: fração da largura/altura da arte */
   cartao: { x: 0.11, y: 0.235, w: 0.235, h: 0.315, rotacao: -2.5 },
-  /* modelo: altura máxima, base e largura máxima (frações) */
-  modelo: { altura: 0.95, base: 0.99, larguraMax: 0.56, centroX: 0.5 },
+  /* modelo: o corpo ocupa a faixa vertical entre as margens (10% em cima e embaixo),
+     centralizada; larguraMax é só uma trava para poses muito abertas não saírem da arte */
+  modelo: { margemTopo: 0.1, margemBase: 0.1, larguraMax: 0.92, centroX: 0.5 },
   papel: '#e6ddcd',
 };
 
@@ -257,11 +258,14 @@ export function desenharModelo(ctx, W, H, modelo) {
   const eixo = eixoDoCorpo(modelo);
   // a largura máxima vale para cada lado a partir do eixo, para a modelo nunca sair do centro
   const meiaLargura = Math.max(eixo, modelo.width - eixo);
-  const escala = Math.min((m.altura * H) / modelo.height, (m.larguraMax * W) / 2 / meiaLargura);
+  const alturaUtil = H * (1 - m.margemTopo - m.margemBase);
+  // escala única nos dois eixos: a modelo cresce ou diminui sem distorcer
+  const escala = Math.min(alturaUtil / modelo.height, (m.larguraMax * W) / 2 / meiaLargura);
   const dw = modelo.width * escala;
   const dh = modelo.height * escala;
   const dx = m.centroX * W - eixo * escala;
-  const dy = m.base * H - dh;
+  // centralizada na faixa útil (se a trava de largura reduzir a altura, as margens ficam iguais)
+  const dy = m.margemTopo * H + (alturaUtil - dh) / 2;
 
   ctx.save();
   ctx.shadowColor = 'rgba(40, 28, 18, .38)';
