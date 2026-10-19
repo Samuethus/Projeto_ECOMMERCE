@@ -208,18 +208,34 @@ async function chamarGemini(modelo: string, body: unknown): Promise<any> {
       body: corpo,
     });
     data = await res.json().catch(() => ({}));
-    if (!TEMPORARIOS.has(res.status) || tentativa === 3) break;
+    if (!TEMPORARIOS.has(res.status) || semCota(res.status, data) || tentativa === 3) break;
     console.warn(`Gemini ${modelo} respondeu ${res.status}; nova tentativa ${tentativa + 1}/3`);
     await new Promise((r) => setTimeout(r, tentativa * 2000));
   }
   if (!res.ok) {
-    console.error("Gemini erro", res.status, JSON.stringify(data).slice(0, 2000));
-    throw new HttpError(502, `Falha no serviço de IA (${res.status}). ${data?.error?.message ?? ""}`.trim(), res.status);
+    console.error("Gemini erro", modelo, res.status, JSON.stringify(data).slice(0, 2000));
+    const detalhe = String(data?.error?.message ?? "").slice(0, 400);
+    if (semCota(res.status, data)) {
+      throw new HttpError(
+        402,
+        `Sem cota na API do Gemini para o modelo ${modelo}. A geração de imagens exige faturamento ativo ` +
+          `na chave (Google AI Studio → Billing). Detalhe: ${detalhe}`,
+        res.status,
+      );
+    }
+    throw new HttpError(502, `Falha no serviço de IA (${res.status}, ${modelo}). ${detalhe}`.trim(), res.status);
   }
   if (data?.promptFeedback?.blockReason) {
     throw new HttpError(422, `A IA recusou a solicitação (${data.promptFeedback.blockReason}).`);
   }
   return data;
+}
+
+/* 429 por cota esgotada/inexistente (ex.: plano gratuito sem acesso a imagens) não é passageiro */
+// deno-lint-ignore no-explicit-any
+function semCota(status: number, data: any): boolean {
+  const msg = String(data?.error?.message ?? "").toLowerCase();
+  return status === 429 && (msg.includes("quota") || (data?.error?.status === "RESOURCE_EXHAUSTED" && msg.includes("limit")));
 }
 
 // ---- escolha automática de modelo ------------------------------------------
@@ -260,7 +276,7 @@ async function chamarModelo(tipo: TipoModelo, body: unknown): Promise<{ data: an
   try {
     return { data: await chamarGemini(atual, body), modelo: atual };
   } catch (err) {
-    if (!(err instanceof HttpError) || !err.statusIA) throw err;
+    if (!(err instanceof HttpError) || !err.statusIA || err.status === 402) throw err;
     const descontinuado = err.statusIA === 404;
     const sobrecarregado = TEMPORARIOS.has(err.statusIA);
     if (!descontinuado && !sobrecarregado) throw err;
@@ -274,8 +290,11 @@ async function chamarModelo(tipo: TipoModelo, body: unknown): Promise<{ data: an
     try {
       return { data: await chamarGemini(substituto, body), modelo: substituto };
     } catch (err2) {
-      if (err2 instanceof HttpError && err2.statusIA && TEMPORARIOS.has(err2.statusIA)) {
-        throw new HttpError(503, "O serviço de IA está sobrecarregado no momento. Aguarde 1 minuto e tente novamente.");
+      if (err2 instanceof HttpError && err2.status !== 402 && err2.statusIA && TEMPORARIOS.has(err2.statusIA)) {
+        throw new HttpError(
+          503,
+          `O serviço de IA está sobrecarregado no momento (${atual} e ${substituto}). Aguarde 1 minuto e tente novamente.`,
+        );
       }
       throw err2;
     }
