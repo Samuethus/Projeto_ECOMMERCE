@@ -78,7 +78,16 @@ cole o conteúdo de `functions/producao/index.ts` e publique. **Desligue** a op�
 (Details → Function configuration): com as chaves novas do Supabase ela bloqueia as chamadas. A própria
 função valida o login e a tabela `equipe`.
 
-**Ou pelo CLI** (requer o [Supabase CLI](https://supabase.com/docs/guides/cli)):
+**Automático pelo GitHub (recomendado):** o workflow `.github/workflows/supabase-funcao.yml` publica a função
+a cada push que altera `supabase/functions/`. Para ativar:
+1. Crie um token pessoal em <https://supabase.com/dashboard/account/tokens>.
+2. No GitHub, vá em **Settings → Secrets and variables → Actions → New repository secret**,
+   com o nome `SUPABASE_ACCESS_TOKEN` e o token como valor.
+
+**Pelo computador:** coloque `SUPABASE_ACCESS_TOKEN=sbp_...` no `.env` e rode
+`python scripts/publicar_funcao.py`. É preciso ter o [Supabase CLI](https://supabase.com/docs/guides/cli).
+
+**Ou pelo CLI manualmente:**
 ```bash
 supabase login
 supabase link --project-ref <PROJECT_REF>
