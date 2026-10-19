@@ -27,7 +27,8 @@ const GEMINI_IMAGE_MODEL = Deno.env.get("GEMINI_IMAGE_MODEL") || "gemini-3.1-fla
 const GEMINI_IMAGE_SIZE = Deno.env.get("GEMINI_IMAGE_SIZE") ?? "2K"; // vazio = padrão do modelo
 
 const GERADOR_FUNDO = (Deno.env.get("GERADOR_FUNDO") || "cloudflare").toLowerCase();
-const CF_ACCOUNT_ID = Deno.env.get("CLOUDFLARE_ACCOUNT_ID") ?? "";
+// aceita o ID puro ou a URL do painel colada por engano (dash.cloudflare.com/<id>/...)
+const CF_ACCOUNT_ID = (Deno.env.get("CLOUDFLARE_ACCOUNT_ID") ?? "").match(/[0-9a-f]{32}/i)?.[0] ?? "";
 const CF_API_TOKEN = Deno.env.get("CLOUDFLARE_API_TOKEN") ?? "";
 const CF_IMAGE_MODEL = Deno.env.get("CF_IMAGE_MODEL") || "@cf/black-forest-labs/flux-1-schnell";
 const ALLOWED_ORIGINS = (Deno.env.get("ALLOWED_ORIGINS") ?? "*").split(",").map((s) => s.trim());
