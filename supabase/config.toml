@@ -1,0 +1,7 @@
+# Configuração mínima do Supabase CLI para este projeto.
+# O ID real do projeto é informado no deploy:  supabase link --project-ref <ref>
+project_id = "margelle"
+
+[functions.producao]
+# exige o token de sessão do usuário logado (Supabase Auth)
+verify_jwt = true

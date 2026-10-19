@@ -10,6 +10,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fira+Sans:wght@400;500;600&family=Jost:wght@300;400&family=League+Gothic:wdth@75..100&family=Yellowtail&display=swap">
   <link rel="stylesheet" href="assets/css/styles.css">
+  <link rel="stylesheet" href="assets/css/producao.css">
 </head>
 <body>
 
@@ -43,7 +44,7 @@
         <li><a href="#lookbook">Look Book 2025</a></li>
         <li><a href="#services">Our Services</a></li>
         <li><a href="#">No Corpo</a></li>
-        <li><a href="#">Produção</a></li>
+        <li><a href="#producao" data-producao-open>Produção</a></li>
         <li><a href="#contact">Contact Us</a></li>
       </ul>
     </nav>
@@ -62,7 +63,7 @@
           <li><a href="#lookbook" data-menu-close>Look Book 2025</a></li>
           <li><a href="#services" data-menu-close>Our Services</a></li>
           <li><a href="#" data-menu-close>No Corpo</a></li>
-          <li><a href="#" data-menu-close>Produção</a></li>
+          <li><a href="#producao" data-menu-close data-producao-open>Produção</a></li>
           <li><a href="#contact" data-menu-close>Contact Us</a></li>
         </ul>
         <a class="site-nav__cta" href="#services" data-menu-close>Book Now and Reserve Your Styling Session</a>
@@ -256,6 +257,169 @@
     </div>
   </footer>
 
+  <!-- ===================================================== 07 · PRODUÇÃO (wizard) -->
+  <div class="producao" id="producao" hidden>
+    <div class="producao__backdrop" data-producao-close></div>
+
+    <div class="producao__dialog" role="dialog" aria-modal="true" aria-labelledby="producao-title">
+      <header class="producao__head">
+        <div>
+          <p class="producao__eyebrow">Margelle Studio</p>
+          <h2 class="producao__title" id="producao-title"><span class="display">Produção</span> <span class="script">de conteúdo</span></h2>
+        </div>
+        <div class="producao__user" data-usuario hidden>
+          <span data-usuario-nome></span>
+          <span class="producao__quota" data-cota></span>
+          <button class="producao__link" type="button" data-sair>Sair</button>
+        </div>
+        <button class="producao__close" type="button" aria-label="Fechar" data-producao-close>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4l16 16M20 4 4 20"/></svg>
+        </button>
+      </header>
+
+      <ol class="producao__steps" data-passos aria-label="Etapas">
+        <li data-passo-indicador="foto"><span>01</span> Foto da modelo</li>
+        <li data-passo-indicador="analise"><span>02</span> Análise do look</li>
+        <li data-passo-indicador="arte"><span>03</span> Arte final</li>
+      </ol>
+
+      <div class="producao__body">
+
+        <!-- Aviso: Supabase ainda não configurado -->
+        <section class="producao__step" data-passo="indisponivel" hidden>
+          <div class="producao__empty">
+            <h3 class="producao__h3">Produção ainda não configurada</h3>
+            <p>Preencha <code>assets/js/producao/config.js</code> com a URL e a chave pública do projeto Supabase (veja <code>supabase/README.md</code>).</p>
+          </div>
+        </section>
+
+        <!-- Login da equipe -->
+        <section class="producao__step" data-passo="acesso" hidden>
+          <form class="producao__login" data-form-login novalidate>
+            <h3 class="producao__h3">Acesso da equipe</h3>
+            <p>Entre com o e-mail e a senha cadastrados para usar a Produção.</p>
+            <label class="campo">
+              <span>E-mail</span>
+              <input type="email" name="email" autocomplete="username" required>
+            </label>
+            <label class="campo">
+              <span>Senha</span>
+              <input type="password" name="senha" autocomplete="current-password" required>
+            </label>
+            <p class="producao__erro" data-erro role="alert"></p>
+            <button class="btn-solid producao__btn" type="submit">Entrar</button>
+          </form>
+        </section>
+
+        <!-- 01 · Foto -->
+        <section class="producao__step" data-passo="foto" hidden>
+          <div class="producao__grid">
+            <label class="dropzone" data-dropzone>
+              <input type="file" accept="image/jpeg,image/png,image/webp" data-arquivo>
+              <img class="dropzone__preview" data-preview alt="" hidden>
+              <span class="dropzone__hint" data-dropzone-hint>
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 16V4m0 0-4.5 4.5M12 4l4.5 4.5M4 15v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3"/></svg>
+                <strong>Arraste a foto aqui</strong>
+                ou clique para escolher
+              </span>
+            </label>
+
+            <div class="producao__aside">
+              <h3 class="producao__h3">Foto da modelo</h3>
+              <ul class="producao__checklist">
+                <li>Corpo inteiro, da cabeça aos pés, de pé</li>
+                <li>Foto vertical, nítida e bem iluminada</li>
+                <li>Uma única pessoa na imagem</li>
+                <li>JPG, PNG ou WebP · mínimo 900 px de altura</li>
+              </ul>
+              <p class="producao__nota">A modelo é recortada da sua foto original: rosto, corpo e roupa <strong>não são alterados</strong> pela IA.</p>
+              <p class="producao__erro" data-erro role="alert"></p>
+            </div>
+          </div>
+          <footer class="producao__actions">
+            <span></span>
+            <button class="btn-solid producao__btn" type="button" data-acao="analisar" disabled>Continuar</button>
+          </footer>
+        </section>
+
+        <!-- 02 · Análise -->
+        <section class="producao__step" data-passo="analise" hidden>
+          <div class="producao__progress" data-progresso>
+            <p data-progresso-item="recorte"><span class="spinner" aria-hidden="true"></span> Recortando a modelo <em data-progresso-pct></em></p>
+            <p data-progresso-item="analise"><span class="spinner" aria-hidden="true"></span> Analisando o look</p>
+          </div>
+
+          <div class="producao__grid" data-editor hidden>
+            <figure class="producao__cutout">
+              <img data-recorte alt="Modelo recortada">
+              <figcaption>Recorte da foto original</figcaption>
+            </figure>
+
+            <div class="producao__aside">
+              <p class="producao__alerta" data-alerta hidden></p>
+
+              <fieldset class="bloco">
+                <legend>Paleta · 5 cores do look</legend>
+                <ol class="paleta" data-paleta></ol>
+              </fieldset>
+
+              <fieldset class="bloco">
+                <legend>Tecidos do fundo</legend>
+                <textarea rows="4" data-tecidos aria-describedby="dica-linhas"></textarea>
+              </fieldset>
+
+              <fieldset class="bloco">
+                <legend>Close-ups nas polaroids</legend>
+                <textarea rows="5" data-closeups aria-describedby="dica-linhas"></textarea>
+                <p class="producao__nota" id="dica-linhas">Um item por linha. Você pode editar antes de gerar.</p>
+              </fieldset>
+
+              <p class="producao__erro" data-erro role="alert"></p>
+            </div>
+          </div>
+          <footer class="producao__actions">
+            <button class="btn-ghost producao__btn" type="button" data-acao="voltar-foto">Voltar</button>
+            <button class="btn-solid producao__btn" type="button" data-acao="gerar" disabled>Gerar arte</button>
+          </footer>
+        </section>
+
+        <!-- 03 · Arte final -->
+        <section class="producao__step" data-passo="arte" hidden>
+          <div class="producao__grid">
+            <div class="producao__resultado">
+              <div class="producao__loading" data-gerando>
+                <span class="spinner spinner--lg" aria-hidden="true"></span>
+                <p>Gerando o moodboard…</p>
+                <small>Isso leva de 15 a 60 segundos.</small>
+              </div>
+              <img data-arte alt="Arte final gerada para o Instagram" hidden>
+            </div>
+
+            <div class="producao__aside">
+              <h3 class="producao__h3">Arte final</h3>
+              <p>Formato Instagram 4:5 · 1080 × 1350 px.</p>
+              <p class="producao__nota" data-restantes></p>
+              <p class="producao__erro" data-erro role="alert"></p>
+              <div class="producao__downloads">
+                <button class="btn-solid producao__btn" type="button" data-acao="baixar-jpg" disabled>Baixar JPG</button>
+                <button class="btn-ghost producao__btn" type="button" data-acao="baixar-png" disabled>Baixar PNG</button>
+              </div>
+            </div>
+          </div>
+          <footer class="producao__actions">
+            <button class="btn-ghost producao__btn" type="button" data-acao="voltar-analise">Ajustar análise</button>
+            <div class="producao__actions-group">
+              <button class="btn-ghost producao__btn" type="button" data-acao="regerar" disabled>Gerar outra versão</button>
+              <button class="btn-solid producao__btn" type="button" data-acao="nova">Nova produção</button>
+            </div>
+          </footer>
+        </section>
+
+      </div>
+    </div>
+  </div>
+
   <script src="assets/js/main.js" defer></script>
+  <script src="assets/js/producao/wizard.js" type="module"></script>
 </body>
 </html>

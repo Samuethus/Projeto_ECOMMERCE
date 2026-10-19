@@ -1,0 +1,19 @@
+Layout de colagem de moodboard para editorial de alta moda. No centro, uma fotografia de corpo inteiro de uma modelo feminina sorridente, com o cabelo presinho e alinhado, de pé, ereta e posando com confiança.
+
+PRESERVAÇÃO E FIDELIDADE DA MODELO:
+
+Manter rigorosamente a integridade original do rosto e da estrutura corporal da modelo da imagem de referência, sem alterar traços faciais, feições, tom de pele ou proporções corporais.
+
+COMPOSIÇÃO DO FUNDO:
+Um fundo de colagem de moda artística apresentando texturas sobrepostas de tecidos.
+
+ELEMENTOS DO MOODBOARD:
+No centro-esquerdo, um cartão vertical de amostras de papel bege mostrando 5 pinceladas horizontais com amostras de cores obtidas única e exclusivamente das vestimentas (roupas e joias) da modelo
+
+Ao redor da modelo, nos cantos e ao fundo, há recortes de fotos espalhadas no estilo Polaroid com bordas finas, com leve transparencia e muito sutis na cor do papel bege, destacando em macro os detalhes em close-up do look. Ex: close-up da textura, close-up da estampa, close-up dos acessórios, close-up da bolsa, close-up dos sapatos].
+
+ESTILO E ILUMINAÇÃO:
+Iluminação profissional de estúdio, sombras suaves, estética neutra e quente, alta resolução, visual limpo de e-commerce de moda, resolução 8k, fotorrealista. --ar 4:5
+
+Dica de Uso (para Midjourney / Stable Diffusion):
+Se estiver utilizando a Image-to-Image no Midjourney, lembre-se de usar parâmetros de referência de imagem como --cw 100 (Character Weight 100) junto com a imagem original para reforçar a preservação exata dos traços faciais e corporais da modelo.
