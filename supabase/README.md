@@ -79,14 +79,25 @@ supabase secrets set GEMINI_API_KEY=<chave>
 Em `assets/js/producao/config.js`, preencha `supabaseUrl` e `supabaseAnonKey`.
 Essa chave é pública. **Nunca** coloque ali a `service_role` nem a chave do Gemini.
 
-### 7. Testar
-O wizard usa módulos JavaScript (ES modules), que **não funcionam abrindo o `index.html` com duplo clique**
-(`file://`). Para testar no computador, sirva a pasta do projeto:
-```bash
-python -m http.server 8000
-```
-Depois abra <http://localhost:8000/#producao>. Em produção, publique o site em qualquer hospedagem estática,
-como GitHub Pages, Vercel ou Netlify, e adicione o domínio em `ALLOWED_ORIGINS`.
+### 7. Publicar e testar
+O site é publicado no **GitHub Pages** pelo workflow `.github/workflows/pages.yml`, a cada push na `main`:
+
+- Endereço: <https://samuethus.github.io/Projeto_ECOMMERCE/>
+- Produção direto: <https://samuethus.github.io/Projeto_ECOMMERCE/#producao>
+
+Configuração única no GitHub: **Settings → Pages → Build and deployment → Source: GitHub Actions**.
+O workflow publica só o `index.html` e a pasta `assets/`. As pastas `docs/`, `supabase/` e `scripts/`
+ficam fora do site.
+
+No Supabase:
+- em **Edge Functions → Secrets**, defina
+  `ALLOWED_ORIGINS=https://samuethus.github.io,http://localhost:8000`;
+- em **Authentication → URL Configuration**, use como *Site URL*
+  `https://samuethus.github.io/Projeto_ECOMMERCE/`.
+
+Para testar no computador antes de publicar, sirva a pasta do projeto com `python -m http.server 8000`
+e abra <http://localhost:8000/#producao>. O wizard usa módulos JavaScript, que **não funcionam abrindo
+o `index.html` com duplo clique** (`file://`).
 
 ## Custos e limites
 

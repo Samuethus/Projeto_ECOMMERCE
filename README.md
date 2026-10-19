@@ -21,7 +21,8 @@ supabase/                  backend da Produção (banco, storage e Edge Function
   README.md                passo a passo de configuração
 ```
 
-Para visualizar o site, abra o `index.html` no navegador. Para usar o menu **Produção**, sirva a pasta
+Site publicado: <https://samuethus.github.io/Projeto_ECOMMERCE/> (atualiza a cada push na `main`).
+Para visualizar localmente, abra o `index.html` no navegador. Para usar o menu **Produção**, sirva a pasta
 com `python -m http.server 8000` e acesse <http://localhost:8000>. O wizard usa módulos JavaScript,
 que não funcionam via `file://`. A configuração do backend está em [supabase/README.md](supabase/README.md).
 

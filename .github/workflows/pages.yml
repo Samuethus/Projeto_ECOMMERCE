@@ -1,0 +1,44 @@
+# Publica o site no GitHub Pages a cada push na main.
+# Só vão para o ar os arquivos do site (index.html e assets/);
+# docs/, supabase/ e scripts/ ficam apenas no repositório.
+name: Publicar site
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  publicar:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Montar pasta do site
+        run: |
+          mkdir _site
+          cp index.html _site/
+          cp -r assets _site/
+          rm -f _site/assets/images/LEIA-ME.md
+          touch _site/.nojekyll
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+      - id: deploy
+        uses: actions/deploy-pages@v4
