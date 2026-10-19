@@ -4,12 +4,16 @@
 // Ações (POST JSON, usuário autenticado e cadastrado em public.equipe):
 //   { acao: "status" }                          → limite diário e uso de hoje
 //   { acao: "analisar", imagem }                → peças, 5 cores, tecidos e close-ups
-//   { acao: "gerar", imagem, analise }          → fundo do moodboard (sem a modelo)
+//   { acao: "gerar", imagem, analise }          → fundo de tecidos do moodboard
 //
 // `imagem` = { mime: "image/jpeg" | "image/png" | "image/webp", data: "<base64>" }
 //
-// A modelo NÃO é gerada pela IA: o site recorta a foto original e a posiciona
-// sobre o fundo gerado, preservando rosto e corpo sem alterações.
+// A modelo e os close-ups NÃO são gerados pela IA: o site recorta a foto original
+// (modelo e detalhes do look) e monta tudo sobre o fundo gerado.
+//
+// Fundo (secret GERADOR_FUNDO):
+//   "cloudflare" (padrão) → Workers AI / FLUX, com cota diária gratuita
+//   "gemini"             → modelo de imagem do Gemini (exige faturamento ativo)
 // =============================================================================
 
 import { createClient, type SupabaseClient, type User } from "npm:@supabase/supabase-js@2.117.2";
@@ -21,6 +25,11 @@ const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY") ?? "";
 const GEMINI_TEXT_MODEL = Deno.env.get("GEMINI_TEXT_MODEL") || "gemini-3.8-flash";
 const GEMINI_IMAGE_MODEL = Deno.env.get("GEMINI_IMAGE_MODEL") || "gemini-3.1-flash-image-preview";
 const GEMINI_IMAGE_SIZE = Deno.env.get("GEMINI_IMAGE_SIZE") ?? "2K"; // vazio = padrão do modelo
+
+const GERADOR_FUNDO = (Deno.env.get("GERADOR_FUNDO") || "cloudflare").toLowerCase();
+const CF_ACCOUNT_ID = Deno.env.get("CLOUDFLARE_ACCOUNT_ID") ?? "";
+const CF_API_TOKEN = Deno.env.get("CLOUDFLARE_API_TOKEN") ?? "";
+const CF_IMAGE_MODEL = Deno.env.get("CF_IMAGE_MODEL") || "@cf/black-forest-labs/flux-1-schnell";
 const ALLOWED_ORIGINS = (Deno.env.get("ALLOWED_ORIGINS") ?? "*").split(",").map((s) => s.trim());
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
@@ -54,7 +63,8 @@ type Analise = {
   pecas: { nome: string; descricao: string }[];
   cores: { nome: string; hex: string }[];
   tecidos_fundo: string[];
-  closeups: string[];
+  /* caixa = [ymin, xmin, ymax, xmax] normalizada 0–1000 sobre a foto enviada */
+  closeups: { descricao: string; caixa: number[] }[];
 };
 
 class HttpError extends Error {
@@ -78,41 +88,25 @@ Write every text value in Brazilian Portuguese.
 - tecidos_fundo: 3 to 5 fabric/material textures for the collage background, derived from the look
   (e.g. "seda marrom com bolinhas brancas", "jeans azul claro", "linho bege desfiado", "couro vinho").
   Include at least one neutral beige linen/cotton texture.
-- closeups: 4 or 5 macro close-up details of the look for polaroid photos
-  (e.g. "textura do jeans", "estampa de bolinhas da blusa", "alça e ferragem da bolsa", "scarpin nude", "pulseira dourada").
+- closeups: 5 or 6 details of the look that will be CROPPED from this photo for polaroid close-ups
+  (e.g. "estampa da blusa", "textura do jeans", "bolsa e ferragem", "sapato", "brincos", "pulseira").
+  Prefer accessories and textures, avoid the face. For each one give:
+    descricao: short label;
+    caixa: bounding box [ymin, xmin, ymax, xmax] normalized to 0-1000 over this image, tight around the detail
+    (for prints/textures choose a clean area of the garment, at least 120 units wide and tall).
 `.trim();
 
-function promptGeracao(a: Analise): string {
+/* Fundo: só tecidos. Polaroids, cartão de cores e modelo são montados no site. */
+function promptFundo(a: Analise): string {
   const tecidos = a.tecidos_fundo.join("; ");
-  const closeups = a.closeups.map((c, i) => `${i + 1}) ${c}`).join("; ");
-  const pecas = a.pecas.map((p) => `${p.nome} (${p.descricao})`).join("; ");
-
   return `
-Create the BACKGROUND of a high-fashion editorial moodboard collage, vertical 4:5, for an Instagram post.
-
-ABSOLUTE RULES:
-- Do NOT draw any person, face, body, hands, mannequin or silhouette anywhere in the image.
-- Keep the central vertical band (from about 32% to 68% of the width, full height) free of polaroids and objects:
-  only the fabric background must be visible there, because the original model photo will be placed on top later.
-- Keep the left-centre area (about 6% to 32% of the width and 18% to 55% of the height) free of polaroids:
-  a colour-swatch card will be placed there later. Fabric background only.
-- No text, no letters, no logos, no watermarks.
-
-BACKGROUND COMPOSITION:
-An artistic fashion collage of large, overlapping, softly draped fabric textures that fill the whole frame:
-${tecidos}.
-
-MOODBOARD ELEMENTS:
-3 to 5 Polaroid-style photo cut-outs placed near the corners and outer edges (top-right, right side, bottom-right,
-bottom-left), slightly rotated, with thin and very subtle borders in beige paper colour and soft drop shadows.
-Each polaroid shows a macro close-up of one detail of the look worn in the reference photo: ${closeups}.
-The garments and accessories in the close-ups must be faithful to the reference photo (same colour, print,
-material and hardware). Look pieces for reference: ${pecas}.
-The reference photo is ONLY a guide for garments and accessories — never reproduce the person.
-
-STYLE AND LIGHTING:
-Professional studio lighting, soft shadows, warm neutral aesthetic, clean fashion e-commerce look,
-photorealistic, high resolution.
+Flat-lay fashion moodboard background, vertical composition, seen from above.
+Large overlapping, softly draped and folded fabric swatches filling the entire frame edge to edge: ${tecidos}.
+Realistic macro fabric textures (weave, frayed edges, leather grain, prints), soft professional studio lighting,
+gentle shadows between the layers, warm neutral editorial aesthetic, high-end fashion e-commerce look,
+photorealistic, sharp detail.
+The centre of the frame shows mostly calm fabric, so a photo of a model can be placed on top later.
+No people, no faces, no hands, no mannequins, no clothes being worn, no objects, no photos, no text, no logos.
 `.trim();
 }
 
@@ -138,7 +132,17 @@ const SCHEMA_ANALISE = {
       },
     },
     tecidos_fundo: { type: "ARRAY", items: { type: "STRING" } },
-    closeups: { type: "ARRAY", items: { type: "STRING" } },
+    closeups: {
+      type: "ARRAY",
+      items: {
+        type: "OBJECT",
+        properties: {
+          descricao: { type: "STRING" },
+          caixa: { type: "ARRAY", items: { type: "INTEGER" } },
+        },
+        required: ["descricao", "caixa"],
+      },
+    },
   },
   required: ["foto_adequada", "problemas", "pecas", "cores", "tecidos_fundo", "closeups"],
 };
@@ -180,9 +184,15 @@ function validarAnalise(a: unknown): Analise {
     throw new HttpError(400, "A paleta precisa ter exatamente 5 cores válidas.");
   }
   if (!lista(x.tecidos_fundo, 1, 6)) throw new HttpError(400, "Informe de 1 a 6 tecidos para o fundo.");
-  if (!lista(x.closeups, 1, 6)) throw new HttpError(400, "Informe de 1 a 6 detalhes para os close-ups.");
   if (!Array.isArray(x.pecas)) x.pecas = [];
+  if (!Array.isArray(x.closeups)) x.closeups = [];
   return x;
+}
+
+function bytesParaBase64(bytes: Uint8Array): string {
+  let bin = "";
+  for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  return btoa(bin);
 }
 
 function base64ParaBytes(b64: string): Uint8Array {
@@ -318,13 +328,65 @@ async function analisar(img: Imagem): Promise<Analise> {
 }
 
 async function gerarFundo(img: Imagem, analise: Analise): Promise<{ fundo: Imagem; modelo: string }> {
+  return GERADOR_FUNDO === "gemini" ? await gerarFundoGemini(img, analise) : await gerarFundoCloudflare(analise);
+}
+
+/* Cloudflare Workers AI: cota diária gratuita. FLUX schnell gera 1024×1024;
+   o site recorta para 4:5 (o fundo é só textura de tecido). */
+async function gerarFundoCloudflare(analise: Analise): Promise<{ fundo: Imagem; modelo: string }> {
+  if (!CF_ACCOUNT_ID || !CF_API_TOKEN) {
+    throw new HttpError(500, "CLOUDFLARE_ACCOUNT_ID e CLOUDFLARE_API_TOKEN não configurados na função.");
+  }
+  const flux = CF_IMAGE_MODEL.includes("flux");
+  const corpo = flux
+    ? { prompt: promptFundo(analise), steps: 8 }
+    : { prompt: promptFundo(analise), width: 1024, height: 1280, num_steps: 20 };
+  const url = `https://api.cloudflare.com/client/v4/accounts/${CF_ACCOUNT_ID}/ai/run/${CF_IMAGE_MODEL}`;
+
+  let res: Response | undefined;
+  for (let tentativa = 1; tentativa <= 3; tentativa++) {
+    res = await fetch(url, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${CF_API_TOKEN}`, "Content-Type": "application/json" },
+      body: JSON.stringify(corpo),
+    });
+    if (!TEMPORARIOS.has(res.status) || res.status === 429 || tentativa === 3) break;
+    console.warn(`Cloudflare respondeu ${res.status}; nova tentativa ${tentativa + 1}/3`);
+    await new Promise((r) => setTimeout(r, tentativa * 2000));
+  }
+
+  const tipo = res!.headers.get("Content-Type") ?? "";
+  // alguns modelos (ex.: SDXL) devolvem a imagem binária; o FLUX devolve JSON com base64
+  if (res!.ok && tipo.startsWith("image/")) {
+    return { fundo: { mime: tipo.split(";")[0], data: bytesParaBase64(new Uint8Array(await res!.arrayBuffer())) }, modelo: CF_IMAGE_MODEL };
+  }
+  const data = await res!.json().catch(() => ({}));
+  if (!res!.ok || !data?.success || !data?.result?.image) {
+    const detalhe = String(data?.errors?.[0]?.message ?? res!.statusText ?? "").slice(0, 300);
+    console.error("Cloudflare erro", res!.status, JSON.stringify(data).slice(0, 1000));
+    if (res!.status === 429 || /neuron|allocation|quota|limit/i.test(detalhe)) {
+      throw new HttpError(429, `Cota diária gratuita da Cloudflare esgotada. Tente novamente amanhã. (${detalhe})`);
+    }
+    if (res!.status === 401 || res!.status === 403) {
+      throw new HttpError(500, `Token da Cloudflare inválido ou sem permissão para Workers AI. (${detalhe})`);
+    }
+    throw new HttpError(502, `Falha ao gerar o fundo na Cloudflare (${res!.status}). ${detalhe}`.trim());
+  }
+  return { fundo: { mime: "image/jpeg", data: data.result.image }, modelo: CF_IMAGE_MODEL };
+}
+
+/* Gemini (pago): usa a foto como referência de cores e materiais. */
+async function gerarFundoGemini(img: Imagem, analise: Analise): Promise<{ fundo: Imagem; modelo: string }> {
   const imageConfig: Record<string, string> = { aspectRatio: "4:5" };
   if (GEMINI_IMAGE_SIZE) imageConfig.imageSize = GEMINI_IMAGE_SIZE;
 
   const { data, modelo } = await chamarModelo("imagem", {
     contents: [{
       role: "user",
-      parts: [{ text: promptGeracao(analise) }, { inline_data: { mime_type: img.mime, data: img.data } }],
+      parts: [
+        { text: `${promptFundo(analise)}\nUse the attached photo only as reference for fabric colours and materials.` },
+        { inline_data: { mime_type: img.mime, data: img.data } },
+      ],
     }],
     generationConfig: { responseModalities: ["IMAGE"], imageConfig },
   });

@@ -1,8 +1,9 @@
 /* MARGELLE · Produção — montagem da arte final (canvas)
    Camadas, de baixo para cima:
-     1. fundo do moodboard gerado pela IA (tecidos + polaroids)
-     2. cartão de papel bege com as 5 pinceladas de cor (desenhado aqui, cores exatas)
-     3. modelo recortada da foto ORIGINAL, centralizada, com sombra suave
+     1. fundo de tecidos gerado pela IA
+     2. polaroids com close-ups recortados da foto ORIGINAL (fiéis ao look)
+     3. cartão de papel bege com as 5 pinceladas de cor (desenhado aqui, cores exatas)
+     4. modelo recortada da foto ORIGINAL, centralizada, com sombra suave
    As proporções seguem as referências em docs/referenfica produção (formato 4:5). */
 
 export const LAYOUT = {
@@ -154,6 +155,77 @@ export function desenharCartaoCores(ctx, W, H, cores) {
   ctx.restore();
 }
 
+/* ---------------------------------------------------------- polaroids */
+/* posições: centro (fração da arte), largura (fração da largura) e rotação (graus).
+   Ficam nas bordas, como nas referências; a modelo é desenhada por cima. */
+export const POLAROIDS = [
+  { x: 0.885, y: 0.14, w: 0.21, rot: 3.5 },
+  { x: 0.84, y: 0.565, w: 0.25, rot: -4 },
+  { x: 0.155, y: 0.79, w: 0.27, rot: -3 },
+  { x: 0.83, y: 0.845, w: 0.25, rot: 2.5 },
+];
+
+/**
+ * Recorta da foto ORIGINAL o detalhe indicado pela análise (close-up fiel ao look).
+ * @param {HTMLCanvasElement} foto
+ * @param {number[]} caixa [ymin, xmin, ymax, xmax] normalizada 0–1000
+ * @param {number} [aspecto] largura/altura do recorte
+ */
+export function recortarDetalhe(foto, caixa, aspecto = 1) {
+  const [y0, x0, y1, x1] = caixa.map((v) => Math.max(0, Math.min(1000, v)) / 1000);
+  const W = foto.width, H = foto.height;
+  let cx = ((x0 + x1) / 2) * W, cy = ((y0 + y1) / 2) * H;
+  // folga de 15% e tamanho mínimo, para não ampliar demais (pixelado)
+  let w = Math.max((x1 - x0) * W * 1.15, Math.min(W, H) * 0.16);
+  let h = Math.max((y1 - y0) * H * 1.15, Math.min(W, H) * 0.16);
+  if (w / h > aspecto) h = w / aspecto; else w = h * aspecto;
+  w = Math.min(w, W); h = Math.min(h, H);
+  const sx = Math.max(0, Math.min(W - w, cx - w / 2));
+  const sy = Math.max(0, Math.min(H - h, cy - h / 2));
+
+  const lado = 640;
+  const c = document.createElement('canvas');
+  c.width = lado;
+  c.height = Math.round(lado / aspecto);
+  const g = c.getContext('2d');
+  g.imageSmoothingQuality = 'high';
+  g.drawImage(foto, sx, sy, w, h, 0, 0, c.width, c.height);
+  return c;
+}
+
+function desenharPolaroid(ctx, W, H, slot, imagem, rnd) {
+  const w = slot.w * W;
+  const borda = w * 0.035;
+  const fotoW = w - borda * 2;
+  const fotoH = fotoW / (imagem.width / imagem.height);
+  const h = fotoH + borda * 2;
+
+  ctx.save();
+  ctx.translate(slot.x * W, slot.y * H);
+  ctx.rotate((slot.rot * Math.PI) / 180);
+  ctx.shadowColor = 'rgba(50, 35, 20, .32)';
+  ctx.shadowBlur = 20;
+  ctx.shadowOffsetX = 3;
+  ctx.shadowOffsetY = 8;
+  ctx.fillStyle = '#efe8dc';
+  ctx.fillRect(-w / 2, -h / 2, w, h);
+  ctx.shadowColor = 'transparent';
+  ctx.imageSmoothingQuality = 'high';
+  ctx.drawImage(imagem, -w / 2 + borda, -h / 2 + borda, fotoW, fotoH);
+  // leve brilho de papel fotográfico
+  const brilho = ctx.createLinearGradient(-w / 2, -h / 2, w / 2, h / 2);
+  brilho.addColorStop(0, `rgba(255,255,255,${0.06 + rnd() * 0.05})`);
+  brilho.addColorStop(1, 'rgba(255,255,255,0)');
+  ctx.fillStyle = brilho;
+  ctx.fillRect(-w / 2 + borda, -h / 2 + borda, fotoW, fotoH);
+  ctx.restore();
+}
+
+export function desenharPolaroids(ctx, W, H, detalhes) {
+  const rnd = aleatorio(4242);
+  detalhes.slice(0, POLAROIDS.length).forEach((img, i) => desenharPolaroid(ctx, W, H, POLAROIDS[i], img, rnd));
+}
+
 export function desenharModelo(ctx, W, H, modelo) {
   const m = LAYOUT.modelo;
   const escala = Math.min((m.altura * H) / modelo.height, (m.larguraMax * W) / modelo.width);
@@ -174,10 +246,11 @@ export function desenharModelo(ctx, W, H, modelo) {
 
 /**
  * Monta a arte final.
- * @param {{fundo: CanvasImageSource, modelo: HTMLCanvasElement, cores: {hex:string}[], largura:number, altura:number}} p
+ * @param {{fundo: CanvasImageSource, modelo: HTMLCanvasElement, cores: {hex:string}[],
+ *          detalhes?: HTMLCanvasElement[], largura:number, altura:number}} p
  * @returns {HTMLCanvasElement}
  */
-export function comporArte({ fundo, modelo, cores, largura, altura }) {
+export function comporArte({ fundo, modelo, cores, detalhes = [], largura, altura }) {
   const canvas = document.createElement('canvas');
   canvas.width = largura;
   canvas.height = altura;
@@ -185,6 +258,7 @@ export function comporArte({ fundo, modelo, cores, largura, altura }) {
   ctx.imageSmoothingQuality = 'high';
 
   cobrir(ctx, fundo, largura, altura);
+  desenharPolaroids(ctx, largura, altura, detalhes);
   desenharCartaoCores(ctx, largura, altura, cores);
   desenharModelo(ctx, largura, altura, modelo);
   return canvas;

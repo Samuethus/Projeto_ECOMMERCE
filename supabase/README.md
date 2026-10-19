@@ -4,16 +4,20 @@ O menu **Produção** do site abre um wizard que monta posts de Instagram (4:5, 
 
 1. A pessoa da equipe faz login e envia a foto da modelo.
 2. O navegador recorta a modelo da foto original. Rosto e corpo não passam pela IA.
-3. A Edge Function `producao` pede ao Gemini uma análise do look: peças, 5 cores, tecidos e close-ups.
-   A pessoa revisa e edita o resultado.
-4. A função pede ao Gemini o **fundo** do moodboard (tecidos e polaroids, sem pessoa) e salva no Storage.
-5. O navegador monta a arte final (fundo + cartão de cores + modelo recortada) e libera o download.
+3. A Edge Function `producao` pede ao **Gemini** (plano gratuito) a análise do look: peças, 5 cores,
+   tecidos e a posição dos detalhes na foto. A pessoa revisa, edita e escolhe os close-ups.
+4. A função gera o **fundo de tecidos** com o FLUX da **Cloudflare Workers AI**, que tem cota diária
+   gratuita, e salva no Storage.
+5. O navegador monta a arte final: fundo, polaroids com close-ups **recortados da foto original**,
+   cartão de cores e modelo recortada. Depois, libera o download.
+
+Custo atual: **zero**, dentro das cotas gratuitas do Gemini (análise), da Cloudflare (fundo) e do Supabase.
 
 ```
 supabase/
   config.toml                              configuração mínima do CLI
   migrations/20261019120000_producao.sql   tabelas, RLS, função de limite e bucket
-  functions/producao/index.ts              Edge Function (chama o Gemini)
+  functions/producao/index.ts              Edge Function (Gemini + Cloudflare Workers AI)
 assets/js/producao/
   config.js      URL e chave pública do projeto  ← preencher
   wizard.js      interface do wizard
@@ -38,21 +42,35 @@ Isso cria:
 - `producoes_hoje()`: contagem de gerações do dia;
 - o bucket privado `producoes`, com as regras de acesso.
 
-### 3. Chave do Gemini
-Crie uma chave em <https://aistudio.google.com/apikey>, num projeto do Google com faturamento ativo,
-porque a geração de imagens é paga. No painel do Supabase, vá em **Edge Functions → Secrets** e adicione:
+### 3. Chaves das IAs (gratuitas)
+**Gemini (análise do look):** crie uma chave em <https://aistudio.google.com/apikey>.
+O plano gratuito basta, sem faturamento.
+
+**Cloudflare Workers AI (fundo de tecidos):**
+1. Crie uma conta gratuita em <https://dash.cloudflare.com/sign-up>.
+2. Copie o **Account ID**: ele aparece em *Workers & Pages* → *Overview*, na lateral direita, ou na URL
+   do painel (`dash.cloudflare.com/<ACCOUNT_ID>/...`).
+3. Crie um token em *My Profile → API Tokens → Create Token*, usando o modelo **"Workers AI"**.
+   A permissão necessária é *Account · Workers AI · Read*.
+
+No painel do Supabase, vá em **Edge Functions → Secrets** e adicione:
 
 | Nome | Valor | Obrigatório |
 |---|---|---|
 | `GEMINI_API_KEY` | chave do Google AI Studio | sim |
-| `GEMINI_IMAGE_MODEL` | modelo de imagem (padrão `gemini-3.1-flash-image-preview`) | não |
+| `CLOUDFLARE_ACCOUNT_ID` | Account ID da Cloudflare | sim |
+| `CLOUDFLARE_API_TOKEN` | token com permissão Workers AI | sim |
+| `ALLOWED_ORIGINS` | domínios do site separados por vírgula | recomendado |
 | `GEMINI_TEXT_MODEL` | modelo da análise (padrão `gemini-3.8-flash`) | não |
-| `GEMINI_IMAGE_SIZE` | `1K`, `2K` ou `4K` (padrão `2K`; deixe vazio se o modelo não aceitar) | não |
-| `ALLOWED_ORIGINS` | domínios do site separados por vírgula, ex. `https://margelle.com.br` | recomendado |
+| `CF_IMAGE_MODEL` | modelo do fundo (padrão `@cf/black-forest-labs/flux-1-schnell`) | não |
+| `GERADOR_FUNDO` | `cloudflare` (padrão, gratuito) ou `gemini` (pago, exige faturamento) | não |
+| `GEMINI_IMAGE_MODEL` / `GEMINI_IMAGE_SIZE` | usados só com `GERADOR_FUNDO=gemini` | não |
 
 Os nomes dos modelos do Gemini mudam com frequência. Se o modelo configurado for descontinuado (erro 404),
-a função escolhe sozinha o modelo "flash" equivalente mais novo disponível na sua conta. Para fixar um modelo,
-use os secrets acima (lista oficial: <https://ai.google.dev/gemini-api/docs/models>).
+a função escolhe sozinha o modelo "flash" equivalente mais novo disponível na sua conta.
+
+A cota gratuita da Cloudflare (10.000 "neurons" por dia) deve render algumas dezenas de fundos por dia.
+Quando ela acaba, o wizard avisa e a geração volta a funcionar no dia seguinte.
 
 ### 4. Publicar a Edge Function
 **Pelo painel:** em **Edge Functions → Deploy a new function → Via Editor**, use o nome `producao`,
@@ -104,8 +122,8 @@ o `index.html` com duplo clique** (`file://`).
 
 ## Custos e limites
 
-- **Gemini:** cerca de US$ 0,04 a 0,15 por imagem gerada (confira a tabela atual do Google).
-  A análise custa uma fração de centavo.
+- **Gemini (análise):** dentro do plano gratuito, com limites de uso por minuto e por dia.
+- **Cloudflare (fundo):** dentro da cota diária gratuita do Workers AI.
 - **Limite diário:** cada pessoa da equipe tem um limite (`equipe.limite_diario`, padrão 20).
   "Gerar outra versão" conta como uma nova geração.
 - **Supabase:** o plano gratuito atende o volume esperado. Projetos gratuitos são pausados

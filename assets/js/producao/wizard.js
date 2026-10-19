@@ -3,7 +3,7 @@
    Supabase e o recorte só são carregados quando o wizard é aberto. */
 import { CONFIG, configurado } from './config.js';
 import { arquivoParaImagem, redimensionar, canvasParaPayload, payloadParaSrc, carregarImagem, canvasParaBlob, baixar } from './imagem.js';
-import { comporArte } from './composicao.js';
+import { comporArte, recortarDetalhe, POLAROIDS } from './composicao.js';
 
 const raiz = document.getElementById('producao');
 if (raiz) iniciar(raiz);
@@ -244,8 +244,32 @@ function iniciar(raiz) {
     });
 
     $('[data-tecidos]').value = a.tecidos_fundo.join('\n');
-    $('[data-closeups]').value = a.closeups.join('\n');
+
+    // close-ups: recortes da foto original, marcados por padrão até o limite de polaroids
+    const lista = $('[data-closeups]');
+    lista.innerHTML = '';
+    (a.closeups ?? []).forEach((c, i) => {
+      if (!Array.isArray(c.caixa) || c.caixa.length !== 4) return;
+      const li = document.createElement('li');
+      li.innerHTML = `
+        <label>
+          <input type="checkbox" data-closeup="${i}" ${i < POLAROIDS.length ? 'checked' : ''}>
+          <span class="closeups__thumb"></span>
+          <span class="closeups__nome"></span>
+        </label>`;
+      li.querySelector('.closeups__nome').textContent = c.descricao;
+      li.querySelector('.closeups__thumb').appendChild(recortarDetalhe(estado.foto, c.caixa));
+      lista.appendChild(li);
+    });
+    limitarCloseups();
   }
+
+  function limitarCloseups() {
+    const caixas = $$('[data-closeup]');
+    const marcadas = caixas.filter((c) => c.checked).length;
+    caixas.forEach((c) => { c.disabled = !c.checked && marcadas >= POLAROIDS.length; });
+  }
+  $('[data-closeups]').addEventListener('change', limitarCloseups);
 
   function lerEditor() {
     const linhas = (sel) => $(sel).value.split('\n').map((s) => s.trim()).filter(Boolean).slice(0, 6);
@@ -253,14 +277,15 @@ function iniciar(raiz) {
       hex: li.querySelector('[data-cor-hex]').value,
       nome: li.querySelector('[data-cor-nome]').value.trim() || li.querySelector('[data-cor-hex]').value,
     }));
-    return { ...estado.analise, cores, tecidos_fundo: linhas('[data-tecidos]'), closeups: linhas('[data-closeups]') };
+    const closeups = $$('[data-closeup]:checked').map((c) => estado.analise.closeups[Number(c.dataset.closeup)]);
+    return { ...estado.analise, cores, tecidos_fundo: linhas('[data-tecidos]'), closeups_escolhidos: closeups };
   }
 
   /* ---------------------------------------------------------- 03 · geração */
   async function gerar() {
     const analise = lerEditor();
-    if (!analise.tecidos_fundo.length || !analise.closeups.length) {
-      return erro('Informe ao menos um tecido e um close-up.', 'analise');
+    if (!analise.tecidos_fundo.length) {
+      return erro('Informe ao menos um tecido para o fundo.', 'analise');
     }
     estado.analise = analise;
     estado.arte = null;
@@ -283,6 +308,7 @@ function iniciar(raiz) {
         fundo,
         modelo: estado.modelo,
         cores: analise.cores,
+        detalhes: analise.closeups_escolhidos.map((c) => recortarDetalhe(estado.foto, c.caixa, 1)),
         largura: CONFIG.saida.largura,
         altura: CONFIG.saida.altura,
       });
