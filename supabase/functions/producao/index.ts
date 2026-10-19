@@ -16,7 +16,9 @@ import { createClient, type SupabaseClient, type User } from "npm:@supabase/supa
 
 // ---------------------------------------------------------------- configuração
 const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY") ?? "";
-const GEMINI_TEXT_MODEL = Deno.env.get("GEMINI_TEXT_MODEL") || "gemini-2.5-flash";
+// Modelos preferidos. Se o Google descontinuar algum, a função escolhe sozinha
+// o modelo equivalente mais novo disponível na conta (veja `chamarModelo`).
+const GEMINI_TEXT_MODEL = Deno.env.get("GEMINI_TEXT_MODEL") || "gemini-3.8-flash";
 const GEMINI_IMAGE_MODEL = Deno.env.get("GEMINI_IMAGE_MODEL") || "gemini-3.1-flash-image-preview";
 const GEMINI_IMAGE_SIZE = Deno.env.get("GEMINI_IMAGE_SIZE") ?? "2K"; // vazio = padrão do modelo
 const ALLOWED_ORIGINS = (Deno.env.get("ALLOWED_ORIGINS") ?? "*").split(",").map((s) => s.trim());
@@ -55,7 +57,7 @@ type Analise = {
 };
 
 class HttpError extends Error {
-  constructor(public status: number, message: string) {
+  constructor(public status: number, message: string, public statusIA?: number) {
     super(message);
   }
 }
@@ -201,7 +203,7 @@ async function chamarGemini(modelo: string, body: unknown): Promise<any> {
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
     console.error("Gemini erro", res.status, JSON.stringify(data).slice(0, 2000));
-    throw new HttpError(502, `Falha no serviço de IA (${res.status}). ${data?.error?.message ?? ""}`.trim());
+    throw new HttpError(502, `Falha no serviço de IA (${res.status}). ${data?.error?.message ?? ""}`.trim(), res.status);
   }
   if (data?.promptFeedback?.blockReason) {
     throw new HttpError(422, `A IA recusou a solicitação (${data.promptFeedback.blockReason}).`);
@@ -209,8 +211,56 @@ async function chamarGemini(modelo: string, body: unknown): Promise<any> {
   return data;
 }
 
+// ---- escolha automática de modelo ------------------------------------------
+type TipoModelo = "texto" | "imagem";
+
+const MODELOS: Record<TipoModelo, { preferido: string; padrao: RegExp }> = {
+  texto: { preferido: GEMINI_TEXT_MODEL, padrao: /^gemini-(\d+(?:\.\d+)?)-flash(-preview)?$/ },
+  imagem: { preferido: GEMINI_IMAGE_MODEL, padrao: /^gemini-(\d+(?:\.\d+)?)-flash-image(-preview)?$/ },
+};
+
+// modelo efetivamente em uso (fica em memória enquanto a função estiver "quente")
+const emUso: Partial<Record<TipoModelo, string>> = {};
+
+async function listarModelos(): Promise<string[]> {
+  const res = await fetch(`${GEMINI_URL}?pageSize=1000`, { headers: { "x-goog-api-key": GEMINI_API_KEY } });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    console.error("Falha ao listar modelos", res.status, JSON.stringify(data).slice(0, 500));
+    return [];
+  }
+  // deno-lint-ignore no-explicit-any
+  return (data.models ?? []).filter((m: any) => m.supportedGenerationMethods?.includes("generateContent"))
+    // deno-lint-ignore no-explicit-any
+    .map((m: any) => String(m.name).replace(/^models\//, ""));
+}
+
+/* maior versão primeiro; na mesma versão, a estável antes da preview */
+function melhorModelo(nomes: string[], padrao: RegExp): string | undefined {
+  return nomes
+    .map((n) => ({ n, m: n.match(padrao) }))
+    .filter((x) => x.m)
+    .sort((a, b) => parseFloat(b.m![1]) - parseFloat(a.m![1]) || Number(!!a.m![2]) - Number(!!b.m![2]))[0]?.n;
+}
+
+// deno-lint-ignore no-explicit-any
+async function chamarModelo(tipo: TipoModelo, body: unknown): Promise<{ data: any; modelo: string }> {
+  const atual = emUso[tipo] ?? MODELOS[tipo].preferido;
+  try {
+    return { data: await chamarGemini(atual, body), modelo: atual };
+  } catch (err) {
+    // 404 = modelo inexistente/descontinuado para esta conta: tenta o equivalente mais novo
+    if (!(err instanceof HttpError) || err.statusIA !== 404) throw err;
+    const substituto = melhorModelo(await listarModelos(), MODELOS[tipo].padrao);
+    if (!substituto || substituto === atual) throw err;
+    console.warn(`Modelo ${atual} indisponível; usando ${substituto}`);
+    emUso[tipo] = substituto;
+    return { data: await chamarGemini(substituto, body), modelo: substituto };
+  }
+}
+
 async function analisar(img: Imagem): Promise<Analise> {
-  const data = await chamarGemini(GEMINI_TEXT_MODEL, {
+  const { data } = await chamarModelo("texto", {
     contents: [{ role: "user", parts: [{ text: PROMPT_ANALISE }, { inline_data: { mime_type: img.mime, data: img.data } }] }],
     generationConfig: { temperature: 0.2, responseMimeType: "application/json", responseSchema: SCHEMA_ANALISE },
   });
@@ -225,11 +275,11 @@ async function analisar(img: Imagem): Promise<Analise> {
   }
 }
 
-async function gerarFundo(img: Imagem, analise: Analise): Promise<Imagem> {
+async function gerarFundo(img: Imagem, analise: Analise): Promise<{ fundo: Imagem; modelo: string }> {
   const imageConfig: Record<string, string> = { aspectRatio: "4:5" };
   if (GEMINI_IMAGE_SIZE) imageConfig.imageSize = GEMINI_IMAGE_SIZE;
 
-  const data = await chamarGemini(GEMINI_IMAGE_MODEL, {
+  const { data, modelo } = await chamarModelo("imagem", {
     contents: [{
       role: "user",
       parts: [{ text: promptGeracao(analise) }, { inline_data: { mime_type: img.mime, data: img.data } }],
@@ -241,7 +291,9 @@ async function gerarFundo(img: Imagem, analise: Analise): Promise<Imagem> {
   const parts = data?.candidates?.[0]?.content?.parts ?? [];
   for (const p of parts) {
     const inline = p.inlineData ?? p.inline_data;
-    if (inline?.data) return { mime: inline.mimeType ?? inline.mime_type ?? "image/png", data: inline.data };
+    if (inline?.data) {
+      return { fundo: { mime: inline.mimeType ?? inline.mime_type ?? "image/png", data: inline.data }, modelo };
+    }
   }
   const motivo = data?.candidates?.[0]?.finishReason ?? "sem imagem na resposta";
   throw new HttpError(502, `A IA não gerou a imagem (${motivo}). Tente novamente.`);
@@ -304,7 +356,7 @@ Deno.serve(async (req) => {
         }
         const img = validarImagem(body.imagem);
         const analise = validarAnalise(body.analise);
-        const fundo = await gerarFundo(img, analise);
+        const { fundo, modelo } = await gerarFundo(img, analise);
 
         const id = crypto.randomUUID();
         const ext = fundo.mime === "image/jpeg" ? "jpg" : fundo.mime === "image/webp" ? "webp" : "png";
@@ -320,7 +372,7 @@ Deno.serve(async (req) => {
           id,
           user_id: user.id,
           analise,
-          modelo_ia: GEMINI_IMAGE_MODEL,
+          modelo_ia: modelo,
           fundo_path: up.error ? null : fundoPath,
         });
         if (ins.error) console.error("Falha ao registrar produção", ins.error.message);

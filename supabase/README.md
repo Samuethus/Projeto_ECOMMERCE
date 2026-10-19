@@ -46,12 +46,13 @@ porque a geração de imagens é paga. No painel do Supabase, vá em **Edge Func
 |---|---|---|
 | `GEMINI_API_KEY` | chave do Google AI Studio | sim |
 | `GEMINI_IMAGE_MODEL` | modelo de imagem (padrão `gemini-3.1-flash-image-preview`) | não |
-| `GEMINI_TEXT_MODEL` | modelo da análise (padrão `gemini-2.5-flash`) | não |
+| `GEMINI_TEXT_MODEL` | modelo da análise (padrão `gemini-3.8-flash`) | não |
 | `GEMINI_IMAGE_SIZE` | `1K`, `2K` ou `4K` (padrão `2K`; deixe vazio se o modelo não aceitar) | não |
 | `ALLOWED_ORIGINS` | domínios do site separados por vírgula, ex. `https://margelle.com.br` | recomendado |
 
-Os nomes dos modelos do Gemini mudam com frequência. Confira os atuais em
-<https://ai.google.dev/gemini-api/docs/models> e ajuste os secrets sem mexer no código.
+Os nomes dos modelos do Gemini mudam com frequência. Se o modelo configurado for descontinuado (erro 404),
+a função escolhe sozinha o modelo "flash" equivalente mais novo disponível na sua conta. Para fixar um modelo,
+use os secrets acima (lista oficial: <https://ai.google.dev/gemini-api/docs/models>).
 
 ### 4. Publicar a Edge Function
 **Pelo painel:** em **Edge Functions → Deploy a new function → Via Editor**, use o nome `producao`,
