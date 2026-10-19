@@ -100,14 +100,18 @@ Write every text value in Brazilian Portuguese.
   FIRST look for these priority details, in this order, and include every one that is clearly visible in the photo:
     1. shoes ("sapatos");
     2. nails / manicure ("unhas");
-    3. jewelry — earrings, necklace, rings, bracelets, watch ("joias");
-    4. bows ("laços");
-    5. brooches and other accessories — belt, hair clip, bag hardware, scarf ("broches/adereços");
-    6. dress or skirt hem ("barra do vestido");
-    7. sleeve — cuff, puff, ruffle, buttons ("manga").
+    3. earrings ("brincos");
+    4. necklace ("colar");
+    5. bag and its hardware ("bolsa");
+    6. bracelet or watch ("pulseira/relógio");
+    7. rings ("anéis");
+    8. bows ("laços");
+    9. brooches and other accessories — belt, hair clip, scarf ("broches/adereços");
+    10. dress or skirt hem ("barra do vestido/saia");
+    11. sleeve — cuff, puff, ruffle, buttons ("manga").
   Put the priority details found at the top of the list, in the order above.
   ONLY IF fewer than 5 priority details are visible, complete the list with other details of the look
-  (e.g. "estampa da blusa", "textura do jeans", "bolsa"), preferring accessories and textures.
+  (e.g. "estampa da blusa", "textura do jeans"), preferring accessories and textures.
   Never include a detail that is not clearly visible, and avoid the face. For each one give:
     descricao: short label;
     caixa: bounding box [ymin, xmin, ymax, xmax] normalized to 0-1000 over this image, tight around the detail
