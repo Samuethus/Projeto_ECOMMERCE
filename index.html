@@ -8,47 +8,64 @@
 
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fira+Sans:wght@400;500;600&family=League+Gothic:wdth@75..100&family=Yellowtail&display=swap">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fira+Sans:wght@400;500;600&family=Jost:wght@300;400&family=League+Gothic:wdth@75..100&family=Yellowtail&display=swap">
   <link rel="stylesheet" href="assets/css/styles.css">
 </head>
 <body>
 
   <!-- ===================================================== HEADER -->
   <header class="site-header">
-    <div class="frame site-header__inner">
-      <button class="icon-btn site-header__menu" type="button" aria-label="Open menu" aria-expanded="false" aria-controls="site-nav" data-menu-toggle>
-        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 6h20M2 12h20M2 18h20"/></svg>
+    <!-- Linha 1: redes sociais · marca · chamada para agendamento -->
+    <div class="site-header__top">
+      <button class="site-header__menu" type="button" aria-label="Open menu" aria-expanded="false" aria-controls="site-nav" data-menu-toggle>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18M3 12h18M3 18h18"/></svg>
       </button>
 
-      <nav class="site-header__actions" aria-label="Account">
-        <a class="icon-btn" href="#" aria-label="Search">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="7"/><path d="M15.8 15.8 22 22"/></svg>
-        </a>
-        <a class="icon-btn" href="#" aria-label="My account">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="9.5" r="3.5"/><path d="M5.5 19.2c1.6-2.6 3.8-3.9 6.5-3.9s4.9 1.3 6.5 3.9"/></svg>
-        </a>
-        <a class="icon-btn" href="#" aria-label="Shopping bag">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 7h14l-1 15H6L5 7Z"/><path d="M9 9V5.5a3 3 0 0 1 6 0V9"/></svg>
-        </a>
-      </nav>
+      <ul class="header-social" aria-label="Social media">
+        <li><a href="#" aria-label="Facebook"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M13.6 22v-8.4h2.8l.4-3.3h-3.2V8.2c0-.9.3-1.6 1.6-1.6H17V3.7c-.3 0-1.3-.1-2.5-.1-2.5 0-4.2 1.5-4.2 4.3v2.4H7.5v3.3h2.8V22h3.3Z"/></svg></a></li>
+        <li><a href="#" aria-label="Instagram"><svg viewBox="0 0 24 24" aria-hidden="true"><path fill-rule="evenodd" d="M7.5 2h9A5.5 5.5 0 0 1 22 7.5v9a5.5 5.5 0 0 1-5.5 5.5h-9A5.5 5.5 0 0 1 2 16.5v-9A5.5 5.5 0 0 1 7.5 2Zm4.5 5a5 5 0 1 0 0 10 5 5 0 0 0 0-10Zm0 2.4a2.6 2.6 0 1 1 0 5.2 2.6 2.6 0 0 1 0-5.2ZM17.4 5.3a1.3 1.3 0 1 0 0 2.6 1.3 1.3 0 0 0 0-2.6Z"/></svg></a></li>
+        <li><a href="#" aria-label="Pinterest"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2a10 10 0 0 0-3.6 19.3c-.1-.8-.2-2 0-2.9l1.2-5s-.3-.6-.3-1.5c0-1.4.8-2.4 1.8-2.4.9 0 1.3.6 1.3 1.4 0 .9-.5 2.1-.8 3.3-.2 1 .5 1.8 1.5 1.8 1.8 0 3.1-1.9 3.1-4.6 0-2.4-1.7-4.1-4.2-4.1-2.9 0-4.5 2.1-4.5 4.4 0 .9.3 1.8.8 2.3.1.1.1.2.1.3l-.3 1.2c0 .2-.2.3-.4.2-1.3-.6-2.1-2.5-2.1-4 0-3.3 2.4-6.3 6.8-6.3 3.6 0 6.4 2.6 6.4 6 0 3.6-2.2 6.4-5.4 6.4-1 0-2-.5-2.4-1.2l-.6 2.5c-.2.9-.9 2.1-1.3 2.8A10 10 0 1 0 12 2Z"/></svg></a></li>
+        <li><a href="#" aria-label="YouTube"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M22.5 7.2a2.8 2.8 0 0 0-2-2C18.8 4.7 12 4.7 12 4.7s-6.8 0-8.5.5a2.8 2.8 0 0 0-2 2C1 8.9 1 12 1 12s0 3.1.5 4.8a2.8 2.8 0 0 0 2 2c1.7.5 8.5.5 8.5.5s6.8 0 8.5-.5a2.8 2.8 0 0 0 2-2c.5-1.7.5-4.8.5-4.8s0-3.1-.5-4.8ZM9.8 15.1V8.9l5.7 3.1-5.7 3.1Z"/></svg></a></li>
+        <li><a href="#" aria-label="Spotify"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20Zm4.6 14.4a.6.6 0 0 1-.9.2c-2.4-1.5-5.3-1.8-8.8-1a.6.6 0 1 1-.3-1.2c3.8-.9 7.1-.5 9.8 1.1.3.2.4.6.2.9Zm1.2-2.7a.8.8 0 0 1-1.1.3c-2.7-1.7-6.9-2.2-10.1-1.2a.8.8 0 1 1-.5-1.5c3.7-1.1 8.3-.6 11.4 1.3.4.2.5.7.3 1.1Zm.1-2.8c-3.3-1.9-8.6-2.1-11.7-1.2a.9.9 0 1 1-.5-1.8c3.6-1.1 9.5-.9 13.2 1.4a.9.9 0 0 1-1 1.6Z"/></svg></a></li>
+      </ul>
+
+      <a class="site-header__brand" href="#" aria-label="Margelle — home">MARGELLE<sup>®</sup></a>
+
+      <a class="site-header__cta" href="#services">Book Now and Reserve Your<br>Styling Session</a>
     </div>
 
-    <!-- Menu lateral (abre pelo ícone hambúrguer) -->
+    <!-- Linha 2: navegação principal -->
+    <nav class="site-header__nav" aria-label="Main">
+      <ul>
+        <li><a href="#categories">Shop All Collections</a></li>
+        <li><a href="#categories">Suits &amp; Tailoring</a></li>
+        <li><a href="#categories">Tops &amp; Dresses</a></li>
+        <li><a href="#lookbook">Look Book 2025</a></li>
+        <li><a href="#services">Our Services</a></li>
+        <li><a href="#">No Corpo</a></li>
+        <li><a href="#">Produção</a></li>
+        <li><a href="#contact">Contact Us</a></li>
+      </ul>
+    </nav>
+
+    <!-- Menu lateral (mobile) -->
     <div class="site-nav" id="site-nav" hidden>
       <div class="site-nav__backdrop" data-menu-close></div>
       <div class="site-nav__panel" role="dialog" aria-modal="true" aria-label="Menu">
-        <button class="icon-btn site-nav__close" type="button" aria-label="Close menu" data-menu-close>
+        <button class="site-nav__close" type="button" aria-label="Close menu" data-menu-close>
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4l16 16M20 4 4 20"/></svg>
         </button>
         <ul class="site-nav__list">
-          <li><a href="#categories" data-menu-close>Suits</a></li>
-          <li><a href="#categories" data-menu-close>Bottoms</a></li>
-          <li><a href="#categories" data-menu-close>Tops</a></li>
-          <li><a href="#categories" data-menu-close>Dresses</a></li>
-          <li><a href="#lookbook" data-menu-close>Look Book</a></li>
+          <li><a href="#categories" data-menu-close>Shop All Collections</a></li>
+          <li><a href="#categories" data-menu-close>Suits &amp; Tailoring</a></li>
+          <li><a href="#categories" data-menu-close>Tops &amp; Dresses</a></li>
+          <li><a href="#lookbook" data-menu-close>Look Book 2025</a></li>
           <li><a href="#services" data-menu-close>Our Services</a></li>
-          <li><a href="#about" data-menu-close>About Us</a></li>
+          <li><a href="#" data-menu-close>No Corpo</a></li>
+          <li><a href="#" data-menu-close>Produção</a></li>
+          <li><a href="#contact" data-menu-close>Contact Us</a></li>
         </ul>
+        <a class="site-nav__cta" href="#services" data-menu-close>Book Now and Reserve Your Styling Session</a>
       </div>
     </div>
   </header>
@@ -174,7 +191,7 @@
   </main>
 
   <!-- ===================================================== 06 · FOOTER -->
-  <footer class="site-footer">
+  <footer class="site-footer" id="contact">
     <div class="frame site-footer__top">
       <nav class="site-footer__links" aria-label="Footer">
         <div class="footer-col">

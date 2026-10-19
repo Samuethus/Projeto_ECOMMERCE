@@ -28,6 +28,14 @@
     });
   }
 
+  /* ---------- Cabeçalho fixo: versão compacta ao rolar ---------- */
+  const header = document.querySelector('.site-header');
+  if (header) {
+    const onScroll = () => header.classList.toggle('is-scrolled', window.scrollY > 10);
+    onScroll();
+    window.addEventListener('scroll', onScroll, { passive: true });
+  }
+
   /* ---------- Newsletter (sem backend por enquanto) ---------- */
   const form = document.querySelector('[data-newsletter]');
   if (form) {
