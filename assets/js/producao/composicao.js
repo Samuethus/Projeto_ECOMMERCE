@@ -8,9 +8,9 @@
 
 export const LAYOUT = {
   /* cartão de cores: fração da largura/altura da arte */
-  cartao: { x: 0.086, y: 0.196, w: 0.21, h: 0.296, rotacao: -0.8 },
+  cartao: { x: 0.11, y: 0.235, w: 0.235, h: 0.315, rotacao: -2.5 },
   /* modelo: altura máxima, base e largura máxima (frações) */
-  modelo: { altura: 0.915, base: 0.988, larguraMax: 0.52, centroX: 0.5 },
+  modelo: { altura: 0.95, base: 0.99, larguraMax: 0.5, centroX: 0.5 },
   papel: '#e6ddcd',
 };
 
@@ -159,11 +159,14 @@ export function desenharCartaoCores(ctx, W, H, cores) {
 /* posições: centro (fração da arte), largura (fração da largura) e rotação (graus).
    Ficam nas bordas, como nas referências; a modelo é desenhada por cima. */
 export const POLAROIDS = [
-  { x: 0.885, y: 0.14, w: 0.21, rot: 3.5 },
-  { x: 0.84, y: 0.565, w: 0.25, rot: -4 },
-  { x: 0.155, y: 0.79, w: 0.27, rot: -3 },
-  { x: 0.83, y: 0.845, w: 0.25, rot: 2.5 },
+  { x: 0.14, y: 0.125, w: 0.225, rot: -2 },   // alto à esquerda
+  { x: 0.86, y: 0.22, w: 0.27, rot: 3 },      // alto à direita
+  { x: 0.83, y: 0.545, w: 0.3, rot: 2 },      // direita, meio
+  { x: 0.205, y: 0.675, w: 0.255, rot: 2 },   // esquerda, abaixo do cartão
+  { x: 0.825, y: 0.83, w: 0.255, rot: -1.5 }, // embaixo à direita
 ];
+/* proporção das fotos das polaroids (largura/altura) */
+export const ASPECTO_POLAROID = 0.89;
 
 /**
  * Recorta da foto ORIGINAL o detalhe indicado pela análise (close-up fiel ao look).

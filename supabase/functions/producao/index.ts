@@ -4,16 +4,16 @@
 // Ações (POST JSON, usuário autenticado e cadastrado em public.equipe):
 //   { acao: "status" }                          → limite diário e uso de hoje
 //   { acao: "analisar", imagem }                → peças, 5 cores, tecidos e close-ups
-//   { acao: "gerar", imagem, analise }          → fundo de tecidos do moodboard
+//   { acao: "gerar", imagem, ref, analise }     → fundo de tecidos do moodboard (conta no limite)
+//   { acao: "closeup", detalhe, ref, descricao } → close-up NOVO de um detalhe, para a polaroid
 //
 // `imagem` = { mime: "image/jpeg" | "image/png" | "image/webp", data: "<base64>" }
+// `ref` / `detalhe` = mesma forma, já reduzidos pelo site a menos de 512×512 (exigência do FLUX.2 klein)
 //
-// A modelo e os close-ups NÃO são gerados pela IA: o site recorta a foto original
-// (modelo e detalhes do look) e monta tudo sobre o fundo gerado.
-//
-// Fundo (secret GERADOR_FUNDO):
-//   "cloudflare" (padrão) → Workers AI / FLUX, com cota diária gratuita
-//   "gemini"             → modelo de imagem do Gemini (exige faturamento ativo)
+// A modelo NÃO é gerada pela IA: o site recorta a foto original e a coloca sobre a arte.
+// Fundo e close-ups são gerados no FLUX.2 [klein] da Cloudflare Workers AI (cota diária
+// gratuita), usando a foto do look como referência. Com GERADOR_FUNDO=gemini o fundo
+// usa o Gemini de imagem (exige faturamento ativo).
 // =============================================================================
 
 import { createClient, type SupabaseClient, type User } from "npm:@supabase/supabase-js@2.117.2";
@@ -30,7 +30,7 @@ const GERADOR_FUNDO = (Deno.env.get("GERADOR_FUNDO") || "cloudflare").toLowerCas
 // aceita o ID puro ou a URL do painel colada por engano (dash.cloudflare.com/<id>/...)
 const CF_ACCOUNT_ID = (Deno.env.get("CLOUDFLARE_ACCOUNT_ID") ?? "").match(/[0-9a-f]{32}/i)?.[0] ?? "";
 const CF_API_TOKEN = Deno.env.get("CLOUDFLARE_API_TOKEN") ?? "";
-const CF_IMAGE_MODEL = Deno.env.get("CF_IMAGE_MODEL") || "@cf/black-forest-labs/flux-1-schnell";
+const CF_IMAGE_MODEL = Deno.env.get("CF_IMAGE_MODEL") || "@cf/black-forest-labs/flux-2-klein-4b";
 const ALLOWED_ORIGINS = (Deno.env.get("ALLOWED_ORIGINS") ?? "*").split(",").map((s) => s.trim());
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
@@ -98,10 +98,14 @@ Write every text value in Brazilian Portuguese.
 `.trim();
 
 /* Fundo: só tecidos. Polaroids, cartão de cores e modelo são montados no site. */
-function promptFundo(a: Analise): string {
+function promptFundo(a: Analise, comReferencia = false): string {
   const tecidos = a.tecidos_fundo.join("; ");
+  const ref = comReferencia
+    ? "Use image 0 ONLY as reference for the colours, prints and materials of the outfit — " +
+      "recreate those fabrics as loose swatches; never reproduce the person.\n"
+    : "";
   return `
-Flat-lay fashion moodboard background, vertical composition, seen from above.
+${ref}Flat-lay fashion moodboard background, vertical composition, seen from above.
 Large overlapping, softly draped and folded fabric swatches filling the entire frame edge to edge: ${tecidos}.
 Realistic macro fabric textures (weave, frayed edges, leather grain, prints), soft professional studio lighting,
 gentle shadows between the layers, warm neutral editorial aesthetic, high-end fashion e-commerce look,
@@ -196,7 +200,7 @@ function bytesParaBase64(bytes: Uint8Array): string {
   return btoa(bin);
 }
 
-function base64ParaBytes(b64: string): Uint8Array {
+function base64ParaBytes(b64: string): Uint8Array<ArrayBuffer> {
   const bin = atob(b64);
   const bytes = new Uint8Array(bin.length);
   for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
@@ -328,28 +332,57 @@ async function analisar(img: Imagem): Promise<Analise> {
   }
 }
 
-async function gerarFundo(img: Imagem, analise: Analise): Promise<{ fundo: Imagem; modelo: string }> {
-  return GERADOR_FUNDO === "gemini" ? await gerarFundoGemini(img, analise) : await gerarFundoCloudflare(analise);
+async function gerarFundo(img: Imagem, ref: Imagem | null, analise: Analise): Promise<{ fundo: Imagem; modelo: string }> {
+  if (GERADOR_FUNDO === "gemini") return await gerarFundoGemini(img, analise);
+  const fundo = await chamarCloudflare(promptFundo(analise, !!ref), ref ? [ref] : [], 1024, 1280);
+  return { fundo, modelo: CF_IMAGE_MODEL };
 }
 
-/* Cloudflare Workers AI: cota diária gratuita. FLUX schnell gera 1024×1024;
-   o site recorta para 4:5 (o fundo é só textura de tecido). */
-async function gerarFundoCloudflare(analise: Analise): Promise<{ fundo: Imagem; modelo: string }> {
+/* Close-up de polaroid: imagem NOVA gerada a partir do detalhe recortado (imagem 0)
+   e da foto do look inteiro (imagem 1), fiel a cor, material, estampa e ferragens. */
+async function gerarCloseup(detalhe: Imagem, look: Imagem | null, descricao: string): Promise<Imagem> {
+  const prompt = `
+Editorial macro close-up photograph of: ${descricao}.
+Reproduce it exactly as it appears in image 0${look ? " (worn in the outfit shown in image 1)" : ""}:
+same colours, material, print, texture, stitching and metal hardware. Fill the frame with the detail.
+When it is a garment print or texture, show the fabric draped or folded in soft light.
+When it is jewellery, a bag or shoes, it may be worn on the body or placed on fabric, cropped tightly.
+Soft natural studio light, shallow depth of field, warm neutral tones, high-end fashion e-commerce look, photorealistic.
+Never show a full face. No text, no logos, no watermark, no frame or border.
+`.trim();
+  return await chamarCloudflare(prompt, look ? [detalhe, look] : [detalhe], 768, 864);
+}
+
+/* Cloudflare Workers AI (cota diária gratuita).
+   FLUX.2 [klein]: multipart com até 4 imagens de referência (< 512×512) e tamanho livre.
+   Outros modelos (ex.: FLUX.1 schnell): JSON só com texto, 1024×1024. */
+async function chamarCloudflare(prompt: string, refs: Imagem[], largura: number, altura: number): Promise<Imagem> {
   if (!CF_ACCOUNT_ID || !CF_API_TOKEN) {
     throw new HttpError(500, "CLOUDFLARE_ACCOUNT_ID e CLOUDFLARE_API_TOKEN não configurados na função.");
   }
-  const flux = CF_IMAGE_MODEL.includes("flux");
-  const corpo = flux
-    ? { prompt: promptFundo(analise), steps: 8 }
-    : { prompt: promptFundo(analise), width: 1024, height: 1280, num_steps: 20 };
   const url = `https://api.cloudflare.com/client/v4/accounts/${CF_ACCOUNT_ID}/ai/run/${CF_IMAGE_MODEL}`;
+  const multipart = CF_IMAGE_MODEL.includes("flux-2");
+
+  const montarCorpo = (): BodyInit => {
+    if (!multipart) return JSON.stringify({ prompt, steps: 8 });
+    const form = new FormData();
+    form.append("prompt", prompt);
+    form.append("width", String(largura));
+    form.append("height", String(altura));
+    refs.slice(0, 4).forEach((r, i) => {
+      form.append(`input_image_${i}`, new Blob([base64ParaBytes(r.data)], { type: r.mime }), `ref${i}.jpg`);
+    });
+    return form;
+  };
 
   let res: Response | undefined;
   for (let tentativa = 1; tentativa <= 3; tentativa++) {
     res = await fetch(url, {
       method: "POST",
-      headers: { Authorization: `Bearer ${CF_API_TOKEN}`, "Content-Type": "application/json" },
-      body: JSON.stringify(corpo),
+      headers: multipart
+        ? { Authorization: `Bearer ${CF_API_TOKEN}` }
+        : { Authorization: `Bearer ${CF_API_TOKEN}`, "Content-Type": "application/json" },
+      body: montarCorpo(),
     });
     if (!TEMPORARIOS.has(res.status) || res.status === 429 || tentativa === 3) break;
     console.warn(`Cloudflare respondeu ${res.status}; nova tentativa ${tentativa + 1}/3`);
@@ -357,9 +390,9 @@ async function gerarFundoCloudflare(analise: Analise): Promise<{ fundo: Imagem; 
   }
 
   const tipo = res!.headers.get("Content-Type") ?? "";
-  // alguns modelos (ex.: SDXL) devolvem a imagem binária; o FLUX devolve JSON com base64
+  // alguns modelos (ex.: SDXL) devolvem a imagem binária; os FLUX devolvem JSON com base64
   if (res!.ok && tipo.startsWith("image/")) {
-    return { fundo: { mime: tipo.split(";")[0], data: bytesParaBase64(new Uint8Array(await res!.arrayBuffer())) }, modelo: CF_IMAGE_MODEL };
+    return { mime: tipo.split(";")[0], data: bytesParaBase64(new Uint8Array(await res!.arrayBuffer())) };
   }
   const data = await res!.json().catch(() => ({}));
   if (!res!.ok || !data?.success || !data?.result?.image) {
@@ -371,9 +404,9 @@ async function gerarFundoCloudflare(analise: Analise): Promise<{ fundo: Imagem; 
     if (res!.status === 401 || res!.status === 403) {
       throw new HttpError(500, `Token da Cloudflare inválido ou sem permissão para Workers AI. (${detalhe})`);
     }
-    throw new HttpError(502, `Falha ao gerar o fundo na Cloudflare (${res!.status}). ${detalhe}`.trim());
+    throw new HttpError(502, `Falha ao gerar a imagem na Cloudflare (${res!.status}). ${detalhe}`.trim());
   }
-  return { fundo: { mime: "image/jpeg", data: data.result.image }, modelo: CF_IMAGE_MODEL };
+  return { mime: "image/jpeg", data: data.result.image };
 }
 
 /* Gemini (pago): usa a foto como referência de cores e materiais. */
@@ -455,13 +488,27 @@ Deno.serve(async (req) => {
         return json(req, 200, { analise });
       }
 
+      case "closeup": {
+        // não conta no limite diário (faz parte da mesma produção), mas exige cota disponível
+        if (cota.usadas >= cota.limite) {
+          throw new HttpError(429, `Limite diário de ${cota.limite} imagens atingido. Tente novamente amanhã.`);
+        }
+        const detalhe = validarImagem(body.detalhe);
+        const ref = body.ref ? validarImagem(body.ref) : null;
+        const descricao = String(body.descricao ?? "").trim().slice(0, 200);
+        if (!descricao) throw new HttpError(400, "Descreva o detalhe do close-up.");
+        const imagem = await gerarCloseup(detalhe, ref, descricao);
+        return json(req, 200, { imagem });
+      }
+
       case "gerar": {
         if (cota.usadas >= cota.limite) {
           throw new HttpError(429, `Limite diário de ${cota.limite} imagens atingido. Tente novamente amanhã.`);
         }
         const img = validarImagem(body.imagem);
+        const ref = body.ref ? validarImagem(body.ref) : null;
         const analise = validarAnalise(body.analise);
-        const { fundo, modelo } = await gerarFundo(img, analise);
+        const { fundo, modelo } = await gerarFundo(img, ref, analise);
 
         const id = crypto.randomUUID();
         const ext = fundo.mime === "image/jpeg" ? "jpg" : fundo.mime === "image/webp" ? "webp" : "png";

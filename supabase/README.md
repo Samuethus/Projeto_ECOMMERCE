@@ -6,10 +6,10 @@ O menu **Produção** do site abre um wizard que monta posts de Instagram (4:5, 
 2. O navegador recorta a modelo da foto original. Rosto e corpo não passam pela IA.
 3. A Edge Function `producao` pede ao **Gemini** (plano gratuito) a análise do look: peças, 5 cores,
    tecidos e a posição dos detalhes na foto. A pessoa revisa, edita e escolhe os close-ups.
-4. A função gera o **fundo de tecidos** com o FLUX da **Cloudflare Workers AI**, que tem cota diária
-   gratuita, e salva no Storage.
-5. O navegador monta a arte final: fundo, polaroids com close-ups **recortados da foto original**,
-   cartão de cores e modelo recortada. Depois, libera o download.
+4. A função gera, no **FLUX.2 [klein]** da **Cloudflare Workers AI** (cota diária gratuita) e usando a foto
+   como referência, o **fundo de tecidos** inspirado no look e um **close-up novo** de cada detalhe escolhido.
+5. O navegador monta a arte final: fundo, polaroids com os close-ups, cartão de cores e modelo recortada.
+   Depois, libera o download. Se algum close-up falhar, entra um recorte da foto no lugar.
 
 Custo atual: **zero**, dentro das cotas gratuitas do Gemini (análise), da Cloudflare (fundo) e do Supabase.
 
@@ -62,15 +62,15 @@ No painel do Supabase, vá em **Edge Functions → Secrets** e adicione:
 | `CLOUDFLARE_API_TOKEN` | token com permissão Workers AI | sim |
 | `ALLOWED_ORIGINS` | domínios do site separados por vírgula | recomendado |
 | `GEMINI_TEXT_MODEL` | modelo da análise (padrão `gemini-3.8-flash`) | não |
-| `CF_IMAGE_MODEL` | modelo do fundo (padrão `@cf/black-forest-labs/flux-1-schnell`) | não |
+| `CF_IMAGE_MODEL` | modelo de imagem (padrão `@cf/black-forest-labs/flux-2-klein-4b`, que aceita fotos de referência) | não |
 | `GERADOR_FUNDO` | `cloudflare` (padrão, gratuito) ou `gemini` (pago, exige faturamento) | não |
 | `GEMINI_IMAGE_MODEL` / `GEMINI_IMAGE_SIZE` | usados só com `GERADOR_FUNDO=gemini` | não |
 
 Os nomes dos modelos do Gemini mudam com frequência. Se o modelo configurado for descontinuado (erro 404),
 a função escolhe sozinha o modelo "flash" equivalente mais novo disponível na sua conta.
 
-A cota gratuita da Cloudflare (10.000 "neurons" por dia) deve render algumas dezenas de fundos por dia.
-Quando ela acaba, o wizard avisa e a geração volta a funcionar no dia seguinte.
+A cota gratuita da Cloudflare (10.000 "neurons" por dia) deve render cerca de 10 a 20 artes completas por dia
+(cada arte = 1 fundo + até 5 close-ups). Quando ela acaba, o wizard avisa e a geração volta a funcionar no dia seguinte.
 
 ### 4. Publicar a Edge Function
 **Pelo painel:** em **Edge Functions → Deploy a new function → Via Editor**, use o nome `producao`,

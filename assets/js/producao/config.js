@@ -14,6 +14,8 @@ export const CONFIG = {
 
   /* Foto enviada à IA: maior lado em px (menos tráfego e custo) */
   envioMaxLado: 1600,
+  /* Referências para o FLUX.2 klein (precisam ser menores que 512×512) */
+  referenciaMaxLado: 500,
   /* Foto usada no recorte da modelo: maior lado em px */
   recorteMaxLado: 2200,
   /* Altura mínima aceita para a foto da modelo */

@@ -3,7 +3,7 @@
    Supabase e o recorte só são carregados quando o wizard é aberto. */
 import { CONFIG, configurado } from './config.js';
 import { arquivoParaImagem, redimensionar, canvasParaPayload, payloadParaSrc, carregarImagem, canvasParaBlob, baixar } from './imagem.js';
-import { comporArte, recortarDetalhe, POLAROIDS } from './composicao.js';
+import { comporArte, recortarDetalhe, POLAROIDS, ASPECTO_POLAROID } from './composicao.js';
 
 const raiz = document.getElementById('producao');
 if (raiz) iniciar(raiz);
@@ -299,16 +299,41 @@ function iniciar(raiz) {
     botoes.forEach((b) => { b.disabled = true; });
     estado.ocupado = true;
 
+    const texto = $('[data-gerando-texto]');
     try {
-      const r = await estado.api.gerar(estado.envio, analise);
+      // referências para a IA: o FLUX.2 klein exige imagens menores que 512×512
+      const ref = canvasParaPayload(redimensionar(estado.foto, CONFIG.referenciaMaxLado));
+      const escolhidos = analise.closeups_escolhidos;
+      let prontos = 0;
+      const progresso = () => {
+        texto.textContent = escolhidos.length
+          ? `Gerando o fundo e os close-ups… (${prontos}/${escolhidos.length + 1})`
+          : 'Gerando o fundo…';
+      };
+      const contar = (p) => p.finally(() => { prontos++; progresso(); });
+      progresso();
+
+      // fundo e close-ups em paralelo; um close-up que falhar vira recorte da foto
+      const pedidoFundo = contar(estado.api.gerar(estado.envio, ref, analise));
+      const pedidosCloseups = escolhidos.map((c) => {
+        const detalhe = canvasParaPayload(redimensionar(recortarDetalhe(estado.foto, c.caixa, ASPECTO_POLAROID), CONFIG.referenciaMaxLado));
+        return contar(estado.api.closeup(detalhe, ref, c.descricao))
+          .then((res) => carregarImagem(payloadParaSrc(res.imagem)))
+          .catch((e) => {
+            console.warn('Close-up não gerado, usando recorte da foto:', c.descricao, e);
+            return recortarDetalhe(estado.foto, c.caixa, ASPECTO_POLAROID);
+          });
+      });
+
+      const r = await pedidoFundo;
       estado.producaoId = r.id;
       atualizarCota(r.restantes);
-      const fundo = await carregarImagem(payloadParaSrc(r.fundo));
+      const [fundo, detalhes] = await Promise.all([carregarImagem(payloadParaSrc(r.fundo)), Promise.all(pedidosCloseups)]);
       estado.arte = comporArte({
         fundo,
         modelo: estado.modelo,
         cores: analise.cores,
-        detalhes: analise.closeups_escolhidos.map((c) => recortarDetalhe(estado.foto, c.caixa, 1)),
+        detalhes,
         largura: CONFIG.saida.largura,
         altura: CONFIG.saida.altura,
       });
