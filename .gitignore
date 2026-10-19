@@ -7,3 +7,9 @@ supabase/.env
 
 # Variáveis locais (valores reais)
 .env
+
+# Fotos de modelos (pessoas reais): nunca versionar
+docs/referenfica produção/*.jpg
+docs/referenfica produção/*.jpeg
+docs/referenfica produção/*.png
+docs/referenfica produção/*.webp

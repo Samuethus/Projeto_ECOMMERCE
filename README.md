@@ -16,7 +16,8 @@ assets/
     LEIA-ME.md             inventário, proporções e tamanhos recomendados
 docs/
   referencia-layout-margelle.png   layout original (fonte da verdade visual)
-  referenfica produção/            referências e prompt do moodboard de Instagram
+  referenfica produção/            prompt do moodboard; as fotos de referência ficam só
+                                   no computador (ignoradas pelo Git, não vão ao GitHub)
 supabase/                  backend da Produção (banco, storage e Edge Function)
   README.md                passo a passo de configuração
 ```
