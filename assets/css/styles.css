@@ -198,7 +198,7 @@ button, input { font: inherit; color: inherit; }
 .header-social { display: flex; align-items: center; gap: 15px; justify-self: start; }
 .header-social a { display: block; color: var(--color-header-accent); transition: opacity .3s var(--ease); }
 .header-social a:hover { opacity: .6; }
-.header-social svg { width: 15px; height: 15px; fill: currentColor; }
+.header-social svg { width: 20px; height: 20px; fill: currentColor; }
 
 .site-header__brand {
   justify-self: center;
@@ -525,7 +525,7 @@ button, input { font: inherit; color: inherit; }
 .social a { display: block; color: var(--color-ink); transition: opacity .3s; }
 .social a:hover { opacity: .6; }
 .social svg {
-  width: calc(13 * var(--u)); height: calc(13 * var(--u));
+  width: 20px; height: 20px;
   fill: none; stroke: currentColor; stroke-width: 1.8;
 }
 .social svg .fill { fill: currentColor; stroke: none; }
@@ -651,7 +651,6 @@ button, input { font: inherit; color: inherit; }
   .newsletter { width: 100%; }
   .newsletter__text { line-height: 21px; }
   .social { gap: 16px; }
-  .social svg { width: 20px; height: 20px; }
   .newsletter__form { grid-template-columns: 1fr 110px; gap: 10px; margin-top: 22px; }
   .newsletter__form input { height: 44px; font-size: 15px; }
   .btn-solid { height: 44px; }
