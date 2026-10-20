@@ -198,7 +198,7 @@ button, input { font: inherit; color: inherit; }
 .header-social { display: flex; align-items: center; gap: 15px; justify-self: start; }
 .header-social a { display: block; color: var(--color-header-accent); transition: opacity .3s var(--ease); }
 .header-social a:hover { opacity: .6; }
-.header-social svg { width: 14px; height: 14px; fill: currentColor; }
+.header-social svg { width: 15px; height: 15px; fill: currentColor; }
 
 .site-header__brand {
   justify-self: center;
