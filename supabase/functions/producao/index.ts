@@ -12,9 +12,10 @@
 // `ref` / `detalhe` = mesma forma, já reduzidos pelo site a menos de 512×512 (exigência do FLUX.2 klein)
 //
 // A modelo NÃO é gerada pela IA: o site recorta a foto original e a coloca sobre a arte.
-// Fundo e close-ups são gerados no FLUX.2 [klein] da Cloudflare Workers AI (cota diária
-// gratuita), usando a foto do look como referência. Com GERADOR_FUNDO=gemini o fundo
-// usa o Gemini de imagem (exige faturamento ativo).
+// Fundo e close-ups são gerados no FLUX.2 [klein], usando a foto do look como referência:
+// no Pollinations (créditos gratuitos da conta) quando POLLINATIONS_API_KEY existe, com a
+// Cloudflare Workers AI (cota diária gratuita) de reserva; sem essa chave, só na Cloudflare.
+// Com GERADOR_FUNDO=gemini o fundo usa o Gemini de imagem (exige faturamento ativo).
 // =============================================================================
 
 import { createClient, type SupabaseClient, type User } from "npm:@supabase/supabase-js@2.117.2";
@@ -27,7 +28,14 @@ const GEMINI_TEXT_MODEL = Deno.env.get("GEMINI_TEXT_MODEL") || "gemini-3.8-flash
 const GEMINI_IMAGE_MODEL = Deno.env.get("GEMINI_IMAGE_MODEL") || "gemini-3.1-flash-image-preview";
 const GEMINI_IMAGE_SIZE = Deno.env.get("GEMINI_IMAGE_SIZE") ?? "2K"; // vazio = padrão do modelo
 
-const GERADOR_FUNDO = (Deno.env.get("GERADOR_FUNDO") || "cloudflare").toLowerCase();
+// Pollinations: créditos gratuitos (Quest Pollen) da conta; chave secreta `sk_...` de enter.pollinations.ai
+const POLLINATIONS_API_KEY = Deno.env.get("POLLINATIONS_API_KEY") ?? "";
+const POLL_IMAGE_MODEL = Deno.env.get("POLL_IMAGE_MODEL") || "black-forest-labs/flux.2-klein-4b";
+const POLL_URL = "https://gen.pollinations.ai/v1/images";
+
+// com a chave do Pollinations cadastrada, ele vira o padrão (e a Cloudflare, a reserva)
+const GERADOR_FUNDO = (Deno.env.get("GERADOR_FUNDO") || (POLLINATIONS_API_KEY ? "pollinations" : "cloudflare"))
+  .toLowerCase();
 // aceita o ID puro ou a URL do painel colada por engano (dash.cloudflare.com/<id>/...)
 const CF_ACCOUNT_ID = (Deno.env.get("CLOUDFLARE_ACCOUNT_ID") ?? "").match(/[0-9a-f]{32}/i)?.[0] ?? "";
 const CF_API_TOKEN = Deno.env.get("CLOUDFLARE_API_TOKEN") ?? "";
@@ -456,10 +464,41 @@ async function analisar(img: Imagem): Promise<Analise> {
 
 async function gerarFundo(img: Imagem, ref: Imagem | null, analise: Analise): Promise<{ fundo: Imagem; modelo: string }> {
   if (GERADOR_FUNDO === "gemini") return await gerarFundoGemini(img, analise);
-  const largura = Math.round((1024 * CF_ESCALA) / 16) * 16;
-  const altura = Math.round((1280 * CF_ESCALA) / 16) * 16;
-  const fundo = await chamarCloudflare(promptFundo(analise, !!ref), ref ? [ref] : [], largura, altura);
-  return { fundo, modelo: CF_IMAGE_MODEL };
+  const { imagem, modelo } = await gerarImagem((escala) => ({
+    prompt: promptFundo(analise, !!ref),
+    refs: ref ? [ref] : [],
+    largura: Math.round((1024 * escala) / 16) * 16,
+    altura: Math.round((1280 * escala) / 16) * 16,
+  }));
+  return { fundo: imagem, modelo };
+}
+
+/* Pedido de imagem montado para cada gerador: `escala` reduz o tamanho e `completo` diz se
+   podem ir todas as referências (no modo teste da Cloudflare cada referência gasta cota). */
+type Pedido = { prompt: string; refs: Imagem[]; largura: number; altura: number };
+type MontarPedido = (escala: number, completo: boolean) => Pedido;
+
+/* Pollinations (se escolhido) com a Cloudflare de reserva; senão, só a Cloudflare. */
+async function gerarImagem(montar: MontarPedido): Promise<{ imagem: Imagem; modelo: string }> {
+  let falhaPollinations = "";
+  if (GERADOR_FUNDO === "pollinations") {
+    try {
+      return { imagem: await chamarPollinations(montar(1, true)), modelo: POLL_IMAGE_MODEL };
+    } catch (err) {
+      if (!(err instanceof HttpError) || !CF_ACCOUNT_ID || !CF_API_TOKEN) throw err;
+      console.warn(`Pollinations falhou; usando a Cloudflare. ${err.message}`);
+      falhaPollinations = err.message;
+    }
+  }
+  const p = montar(CF_ESCALA, CF_CLOSEUP_COM_LOOK);
+  try {
+    return { imagem: await chamarCloudflare(p.prompt, p.refs, p.largura, p.altura), modelo: CF_IMAGE_MODEL };
+  } catch (err) {
+    if (falhaPollinations && err instanceof HttpError) {
+      throw new HttpError(err.status, `Pollinations: ${falhaPollinations} — Cloudflare (reserva): ${err.message}`);
+    }
+    throw err;
+  }
 }
 
 /* Close-up de polaroid: imagem NOVA gerada a partir do detalhe recortado (imagem 0)
@@ -508,14 +547,74 @@ async function gerarCloseup(
   tipo: TipoCloseup = "detalhe",
   cor = "",
 ): Promise<Imagem> {
-  // no modo teste a foto do look não vai como referência (cada imagem de entrada consome cota)
-  if (!CF_CLOSEUP_COM_LOOK) look = null;
-  const prompt = promptCloseup(tipo, descricao, cor, !!look);
-  // mesma área de 768×864 (reduzida por CF_ESCALA), na proporção pedida, em múltiplos de 16
-  const area = 768 * 864 * CF_ESCALA * CF_ESCALA;
-  const largura = Math.round(Math.sqrt(area * aspecto) / 16) * 16;
-  const altura = Math.round(Math.sqrt(area / aspecto) / 16) * 16;
-  return await chamarCloudflare(prompt, look ? [detalhe, look] : [detalhe], largura, altura);
+  const { imagem } = await gerarImagem((escala, completo) => {
+    // sem `completo` a foto do look não vai como referência (cada imagem de entrada consome cota)
+    const comLook = !!look && completo;
+    // mesma área de 768×864 (reduzida pela escala), na proporção pedida, em múltiplos de 16
+    const area = 768 * 864 * escala * escala;
+    return {
+      prompt: promptCloseup(tipo, descricao, cor, comLook),
+      refs: comLook ? [detalhe, look!] : [detalhe],
+      largura: Math.round(Math.sqrt(area * aspecto) / 16) * 16,
+      altura: Math.round(Math.sqrt(area / aspecto) / 16) * 16,
+    };
+  });
+  return imagem;
+}
+
+/* Pollinations (gen.pollinations.ai, formato OpenAI). Com referências usa /edits, que aceita
+   as fotos em base64 (data URI); sem referências, /generations. Gasta Pollen da conta. */
+async function chamarPollinations({ prompt, refs, largura, altura }: Pedido): Promise<Imagem> {
+  if (!POLLINATIONS_API_KEY) throw new HttpError(500, "POLLINATIONS_API_KEY não configurada na função.");
+  const corpo = JSON.stringify({
+    model: POLL_IMAGE_MODEL,
+    prompt,
+    size: `${largura}x${altura}`,
+    response_format: "b64_json",
+    ...(refs.length ? { image: refs.map((r) => ({ image_url: `data:${r.mime};base64,${r.data}` })) } : {}),
+  });
+  const url = `${POLL_URL}/${refs.length ? "edits" : "generations"}`;
+
+  let res: Response | undefined;
+  for (let tentativa = 1; tentativa <= 3; tentativa++) {
+    res = await fetch(url, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${POLLINATIONS_API_KEY}`, "Content-Type": "application/json" },
+      body: corpo,
+    });
+    if (!TEMPORARIOS.has(res.status) || tentativa === 3) break;
+    // 429/503 trazem Retry-After; espera no máximo 10 s
+    const espera = Math.min(Number(res.headers.get("Retry-After")) || tentativa * 2, 10);
+    console.warn(`Pollinations respondeu ${res.status}; nova tentativa ${tentativa + 1}/3 em ${espera}s`);
+    await res.body?.cancel();
+    await new Promise((r) => setTimeout(r, espera * 1000));
+  }
+
+  const data = await res!.json().catch(() => ({}));
+  const item = data?.data?.[0];
+  if (!res!.ok || (!item?.b64_json && !item?.url)) {
+    const detalhe = String(data?.error?.message ?? data?.message ?? res!.statusText ?? "").slice(0, 300);
+    console.error("Pollinations erro", res!.status, JSON.stringify(data).slice(0, 1000));
+    if (res!.status === 402) {
+      throw new HttpError(402, `Sem Pollen (créditos) na conta do Pollinations. (${detalhe})`);
+    }
+    if (res!.status === 401 || res!.status === 403) {
+      throw new HttpError(500, `Chave do Pollinations inválida ou sem permissão. (${detalhe})`);
+    }
+    throw new HttpError(502, `Falha ao gerar a imagem no Pollinations (${res!.status}). ${detalhe}`.trim());
+  }
+  if (item.b64_json) {
+    // o base64 não traz o tipo: reconhece PNG/WebP pela assinatura (o resto trata como JPEG)
+    const b64: string = item.b64_json;
+    const mime = b64.startsWith("iVBOR") ? "image/png" : b64.startsWith("UklGR") ? "image/webp" : "image/jpeg";
+    return { mime, data: b64 };
+  }
+  const arquivo = await fetch(item.url);
+  if (!arquivo.ok) throw new HttpError(502, `Falha ao baixar a imagem do Pollinations (${arquivo.status}).`);
+  return {
+    mime: (arquivo.headers.get("Content-Type") ?? "image/jpeg").split(";")[0],
+    data: bytesParaBase64(new Uint8Array(await arquivo.arrayBuffer())),
+  };
 }
 
 /* Cloudflare Workers AI (cota diária gratuita).

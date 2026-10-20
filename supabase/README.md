@@ -55,6 +55,15 @@ O plano gratuito basta, sem faturamento.
 3. Crie um token em *My Profile → API Tokens → Create Token*, usando o modelo **"Workers AI"**.
    A permissão necessária é *Account · Workers AI · Read*.
 
+**Pollinations (gerador principal de imagens, opcional):**
+1. Entre em <https://enter.pollinations.ai> com a conta do GitHub.
+2. Ganhe créditos gratuitos (*Quest Pollen*) completando as missões (*Quests*) do painel.
+3. Em *Keys*, crie uma chave **secreta** (`sk_...`). Nunca use essa chave no site, só na função.
+
+Com o segredo `POLLINATIONS_API_KEY` cadastrado, as imagens passam a ser geradas no Pollinations
+(mesmo modelo FLUX.2 [klein], em qualidade alta) e a Cloudflare vira a reserva: se o Pollinations
+falhar ou os créditos acabarem, a função tenta a Cloudflare automaticamente.
+
 No painel do Supabase, vá em **Edge Functions → Secrets** e adicione:
 
 | Nome | Valor | Obrigatório |
@@ -66,7 +75,9 @@ No painel do Supabase, vá em **Edge Functions → Secrets** e adicione:
 | `GEMINI_TEXT_MODEL` | modelo da análise (padrão `gemini-3.8-flash`) | não |
 | `CF_IMAGE_MODEL` | modelo de imagem (padrão `@cf/black-forest-labs/flux-2-klein-4b`, que aceita fotos de referência) | não |
 | `CF_QUALIDADE` | `teste` (padrão: imagens ~62% menores por lado e close-ups sem a foto do look como referência, para poupar cota) ou `alta` (qualidade original) | não |
-| `GERADOR_FUNDO` | `cloudflare` (padrão, gratuito) ou `gemini` (pago, exige faturamento) | não |
+| `POLLINATIONS_API_KEY` | chave secreta `sk_...` do Pollinations | recomendado |
+| `POLL_IMAGE_MODEL` | modelo no Pollinations (padrão `black-forest-labs/flux.2-klein-4b`) | não |
+| `GERADOR_FUNDO` | `pollinations` (padrão quando a chave existe), `cloudflare` (padrão sem a chave) ou `gemini` (pago, exige faturamento) | não |
 | `GEMINI_IMAGE_MODEL` / `GEMINI_IMAGE_SIZE` | usados só com `GERADOR_FUNDO=gemini` | não |
 
 Os nomes dos modelos do Gemini mudam com frequência. Se o modelo configurado for descontinuado (erro 404),
@@ -138,7 +149,9 @@ o `index.html` com duplo clique** (`file://`).
 ## Custos e limites
 
 - **Gemini (análise):** dentro do plano gratuito, com limites de uso por minuto e por dia.
-- **Cloudflare (fundo):** dentro da cota diária gratuita do Workers AI.
+- **Pollinations (fundo e close-ups):** gasta os créditos gratuitos (*Quest Pollen*) da conta; cada imagem
+  do FLUX.2 [klein] custa uma fração pequena de Pollen. Saldo e uso em <https://enter.pollinations.ai>.
+- **Cloudflare (reserva):** dentro da cota diária gratuita do Workers AI.
 - **Limite diário:** cada pessoa da equipe tem um limite (`equipe.limite_diario`, padrão 20).
   "Gerar outra versão" conta como uma nova geração.
 - **Supabase:** o plano gratuito atende o volume esperado. Projetos gratuitos são pausados
