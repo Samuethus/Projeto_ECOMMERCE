@@ -343,9 +343,12 @@ function semCota(status: number, data: any): boolean {
 // ---- escolha automática de modelo ------------------------------------------
 type TipoModelo = "texto" | "imagem";
 
-const MODELOS: Record<TipoModelo, { preferido: string; padrao: RegExp }> = {
-  texto: { preferido: GEMINI_TEXT_MODEL, padrao: /^gemini-(\d+(?:\.\d+)?)-flash(-preview)?$/ },
-  imagem: { preferido: GEMINI_IMAGE_MODEL, padrao: /^gemini-(\d+(?:\.\d+)?)-flash-image(-preview)?$/ },
+const MODELOS: Record<TipoModelo, { preferido: string; padroes: RegExp[] }> = {
+  texto: {
+    preferido: GEMINI_TEXT_MODEL,
+    padroes: [/^gemini-(\d+(?:\.\d+)?)-flash(-preview)?$/, /^gemini-(\d+(?:\.\d+)?)-flash-lite(-preview)?$/],
+  },
+  imagem: { preferido: GEMINI_IMAGE_MODEL, padroes: [/^gemini-(\d+(?:\.\d+)?)-flash-image(-preview)?$/] },
 };
 
 // modelo efetivamente em uso (fica em memória enquanto a função estiver "quente")
@@ -365,11 +368,18 @@ async function listarModelos(): Promise<string[]> {
 }
 
 /* maior versão primeiro; na mesma versão, a estável antes da preview */
-function melhorModelo(nomes: string[], padrao: RegExp): string | undefined {
+function ordenarModelos(nomes: string[], padrao: RegExp): string[] {
   return nomes
     .map((n) => ({ n, m: n.match(padrao) }))
     .filter((x) => x.m)
-    .sort((a, b) => parseFloat(b.m![1]) - parseFloat(a.m![1]) || Number(!!a.m![2]) - Number(!!b.m![2]))[0]?.n;
+    .sort((a, b) => parseFloat(b.m![1]) - parseFloat(a.m![1]) || Number(!!a.m![2]) - Number(!!b.m![2]))
+    .map((x) => x.n);
+}
+
+const MAX_SUBSTITUTOS = 4;
+
+function temporario(err: unknown): boolean {
+  return err instanceof HttpError && err.status !== 402 && !!err.statusIA && TEMPORARIOS.has(err.statusIA);
 }
 
 // deno-lint-ignore no-explicit-any
@@ -380,26 +390,28 @@ async function chamarModelo(tipo: TipoModelo, body: unknown): Promise<{ data: an
   } catch (err) {
     if (!(err instanceof HttpError) || !err.statusIA || err.status === 402) throw err;
     const descontinuado = err.statusIA === 404;
-    const sobrecarregado = TEMPORARIOS.has(err.statusIA);
-    if (!descontinuado && !sobrecarregado) throw err;
+    if (!descontinuado && !temporario(err)) throw err;
 
-    // 404 → o equivalente mais novo; sobrecarga → o melhor modelo diferente do atual
+    // fila de substitutos: flash do mais novo ao mais antigo, depois as reservas (ex.: flash-lite)
     const candidatos = (await listarModelos()).filter((n) => n !== atual);
-    const substituto = melhorModelo(candidatos, MODELOS[tipo].padrao);
-    if (!substituto) throw err;
-    console.warn(`Modelo ${atual} ${descontinuado ? "indisponível" : "sobrecarregado"}; usando ${substituto}`);
-    if (descontinuado) emUso[tipo] = substituto; // sobrecarga é passageira: não troca de vez
-    try {
-      return { data: await chamarGemini(substituto, body), modelo: substituto };
-    } catch (err2) {
-      if (err2 instanceof HttpError && err2.status !== 402 && err2.statusIA && TEMPORARIOS.has(err2.statusIA)) {
-        throw new HttpError(
-          503,
-          `O serviço de IA está sobrecarregado no momento (${atual} e ${substituto}). Aguarde 1 minuto e tente novamente.`,
-        );
+    const fila = MODELOS[tipo].padroes.flatMap((p) => ordenarModelos(candidatos, p)).slice(0, MAX_SUBSTITUTOS);
+    if (!fila.length) throw err;
+    const tentados = [atual];
+    for (const substituto of fila) {
+      console.warn(`Modelo ${tentados.at(-1)} ${descontinuado ? "indisponível" : "sobrecarregado"}; usando ${substituto}`);
+      try {
+        const data = await chamarGemini(substituto, body);
+        if (descontinuado) emUso[tipo] = substituto; // sobrecarga é passageira: não troca de vez
+        return { data, modelo: substituto };
+      } catch (err2) {
+        if (!temporario(err2)) throw err2;
+        tentados.push(substituto);
       }
-      throw err2;
     }
+    throw new HttpError(
+      503,
+      `O serviço de IA está sobrecarregado no momento (${tentados.join(", ")}). Aguarde 1 minuto e tente novamente.`,
+    );
   }
 }
 
