@@ -320,8 +320,8 @@ async function chamarGemini(modelo: string, body: unknown): Promise<any> {
     if (semCota(res.status, data)) {
       throw new HttpError(
         402,
-        `Sem cota na API do Gemini para o modelo ${modelo}. A geração de imagens exige faturamento ativo ` +
-          `na chave (Google AI Studio → Billing). Detalhe: ${detalhe}`,
+        `Sem cota na API do Gemini para o modelo ${modelo}. Ative o faturamento na chave ` +
+          `(Google AI Studio → Billing) ou aguarde a cota renovar. Detalhe: ${detalhe}`,
         res.status,
       );
     }
@@ -377,42 +377,65 @@ function ordenarModelos(nomes: string[], padrao: RegExp): string[] {
 }
 
 const MAX_SUBSTITUTOS = 4;
+const PAUSA_SEM_COTA_MS = 10 * 60 * 1000;
 
-function temporario(err: unknown): boolean {
-  return err instanceof HttpError && err.status !== 402 && !!err.statusIA && TEMPORARIOS.has(err.statusIA);
+// modelos que ficaram sem cota (em memória enquanto a função estiver "quente"): pula até a pausa vencer
+const semCotaAte: Record<string, number> = {};
+const comCota = (modelo: string) => (semCotaAte[modelo] ?? 0) < Date.now();
+
+/* motivo para trocar de modelo, ou null se o erro não se resolve trocando */
+function motivoTroca(err: unknown): "indisponível" | "sobrecarregado" | "sem cota" | null {
+  if (!(err instanceof HttpError) || !err.statusIA) return null;
+  if (err.status === 402) return "sem cota"; // no plano gratuito a cota é por modelo
+  if (err.statusIA === 404) return "indisponível";
+  if (TEMPORARIOS.has(err.statusIA)) return "sobrecarregado";
+  return null;
 }
 
 // deno-lint-ignore no-explicit-any
 async function chamarModelo(tipo: TipoModelo, body: unknown): Promise<{ data: any; modelo: string }> {
   const atual = emUso[tipo] ?? MODELOS[tipo].preferido;
-  try {
-    return { data: await chamarGemini(atual, body), modelo: atual };
-  } catch (err) {
-    if (!(err instanceof HttpError) || !err.statusIA || err.status === 402) throw err;
-    const descontinuado = err.statusIA === 404;
-    if (!descontinuado && !temporario(err)) throw err;
-
-    // fila de substitutos: flash do mais novo ao mais antigo, depois as reservas (ex.: flash-lite)
-    const candidatos = (await listarModelos()).filter((n) => n !== atual);
-    const fila = MODELOS[tipo].padroes.flatMap((p) => ordenarModelos(candidatos, p)).slice(0, MAX_SUBSTITUTOS);
-    if (!fila.length) throw err;
-    const tentados = [atual];
-    for (const substituto of fila) {
-      console.warn(`Modelo ${tentados.at(-1)} ${descontinuado ? "indisponível" : "sobrecarregado"}; usando ${substituto}`);
+  const fila = [atual];
+  const tentados: string[] = [];
+  let listou = false, descontinuado = false, sobrecarga = false;
+  let ultimoErro: unknown;
+  for (let i = 0; i < fila.length; i++) {
+    const modelo = fila[i];
+    if (comCota(modelo)) {
       try {
-        const data = await chamarGemini(substituto, body);
-        if (descontinuado) emUso[tipo] = substituto; // sobrecarga é passageira: não troca de vez
-        return { data, modelo: substituto };
-      } catch (err2) {
-        if (!temporario(err2)) throw err2;
-        tentados.push(substituto);
+        const data = await chamarGemini(modelo, body);
+        if (descontinuado) emUso[tipo] = modelo; // sobrecarga e cota são passageiras: não troca de vez
+        return { data, modelo };
+      } catch (err) {
+        const motivo = motivoTroca(err);
+        if (!motivo) throw err;
+        if (motivo === "sem cota") semCotaAte[modelo] = Date.now() + PAUSA_SEM_COTA_MS;
+        if (motivo === "indisponível" && modelo === atual) descontinuado = true;
+        if (motivo === "sobrecarregado") sobrecarga = true;
+        console.warn(`Modelo ${modelo} ${motivo}; tentando outro`);
+        tentados.push(modelo);
+        ultimoErro = err;
       }
     }
+    // fila de substitutos: flash do mais novo ao mais antigo, depois as reservas (ex.: flash-lite)
+    if (!listou) {
+      listou = true;
+      const candidatos = (await listarModelos()).filter((n) => n !== atual && comCota(n));
+      fila.push(...MODELOS[tipo].padroes.flatMap((p) => ordenarModelos(candidatos, p)).slice(0, MAX_SUBSTITUTOS));
+    }
+  }
+  const lista = tentados.length ? ` (${tentados.join(", ")})` : "";
+  if (sobrecarga) {
+    throw new HttpError(503, `O serviço de IA está sobrecarregado no momento${lista}. Aguarde 1 minuto e tente novamente.`);
+  }
+  if (!ultimoErro || motivoTroca(ultimoErro) === "sem cota") {
     throw new HttpError(
-      503,
-      `O serviço de IA está sobrecarregado no momento (${tentados.join(", ")}). Aguarde 1 minuto e tente novamente.`,
+      402,
+      `Os modelos do Gemini estão sem cota${lista}. O plano gratuito tem limite diário por modelo; ` +
+        `aguarde a cota renovar ou ative o faturamento na chave (Google AI Studio → Billing).`,
     );
   }
+  throw ultimoErro;
 }
 
 async function analisar(img: Imagem): Promise<Analise> {
