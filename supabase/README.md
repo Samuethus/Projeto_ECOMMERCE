@@ -65,14 +65,18 @@ No painel do Supabase, vá em **Edge Functions → Secrets** e adicione:
 | `ALLOWED_ORIGINS` | domínios do site separados por vírgula | recomendado |
 | `GEMINI_TEXT_MODEL` | modelo da análise (padrão `gemini-3.8-flash`) | não |
 | `CF_IMAGE_MODEL` | modelo de imagem (padrão `@cf/black-forest-labs/flux-2-klein-4b`, que aceita fotos de referência) | não |
+| `CF_QUALIDADE` | `teste` (padrão: imagens ~62% menores por lado e close-ups sem a foto do look como referência, para poupar cota) ou `alta` (qualidade original) | não |
 | `GERADOR_FUNDO` | `cloudflare` (padrão, gratuito) ou `gemini` (pago, exige faturamento) | não |
 | `GEMINI_IMAGE_MODEL` / `GEMINI_IMAGE_SIZE` | usados só com `GERADOR_FUNDO=gemini` | não |
 
 Os nomes dos modelos do Gemini mudam com frequência. Se o modelo configurado for descontinuado (erro 404),
 a função escolhe sozinha o modelo "flash" equivalente mais novo disponível na sua conta.
 
-A cota gratuita da Cloudflare (10.000 "neurons" por dia) deve render cerca de 10 a 20 artes completas por dia
-(cada arte = 1 fundo + até 5 close-ups). Quando ela acaba, o wizard avisa e a geração volta a funcionar no dia seguinte.
+A cota gratuita da Cloudflare (10.000 "neurons" por dia, renovada às 00:00 UTC) rende pouco no FLUX.2 [klein]:
+em qualidade `alta` cada imagem custa cerca de 2.000 neurons, ou seja, ~5 imagens por dia (cada arte = 1 fundo + até
+5 close-ups). Por isso o padrão é `CF_QUALIDADE=teste`, que reduz bastante o custo por imagem. Para voltar à qualidade
+original, crie o segredo `CF_QUALIDADE` com o valor `alta` (não precisa alterar o código). Quando a cota acaba, o wizard
+avisa e a geração volta a funcionar no dia seguinte.
 
 ### 4. Publicar a Edge Function
 **Pelo painel:** em **Edge Functions → Deploy a new function → Via Editor**, use o nome `producao`,

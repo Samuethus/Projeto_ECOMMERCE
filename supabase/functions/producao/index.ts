@@ -32,6 +32,11 @@ const GERADOR_FUNDO = (Deno.env.get("GERADOR_FUNDO") || "cloudflare").toLowerCas
 const CF_ACCOUNT_ID = (Deno.env.get("CLOUDFLARE_ACCOUNT_ID") ?? "").match(/[0-9a-f]{32}/i)?.[0] ?? "";
 const CF_API_TOKEN = Deno.env.get("CLOUDFLARE_API_TOKEN") ?? "";
 const CF_IMAGE_MODEL = Deno.env.get("CF_IMAGE_MODEL") || "@cf/black-forest-labs/flux-2-klein-4b";
+// "teste" (padrão) = imagens menores e menos referências, para gastar menos da cota gratuita.
+// "alta" = qualidade original (fundo 1024×1280, close-ups ~768×864 com a foto do look como referência).
+const CF_QUALIDADE = (Deno.env.get("CF_QUALIDADE") || "teste").toLowerCase() === "alta" ? "alta" : "teste";
+const CF_ESCALA = CF_QUALIDADE === "alta" ? 1 : 0.625; // fator linear; área ≈ 39% no modo teste
+const CF_CLOSEUP_COM_LOOK = CF_QUALIDADE === "alta";
 const ALLOWED_ORIGINS = (Deno.env.get("ALLOWED_ORIGINS") ?? "*").split(",").map((s) => s.trim());
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
@@ -416,7 +421,9 @@ async function analisar(img: Imagem): Promise<Analise> {
 
 async function gerarFundo(img: Imagem, ref: Imagem | null, analise: Analise): Promise<{ fundo: Imagem; modelo: string }> {
   if (GERADOR_FUNDO === "gemini") return await gerarFundoGemini(img, analise);
-  const fundo = await chamarCloudflare(promptFundo(analise, !!ref), ref ? [ref] : [], 1024, 1280);
+  const largura = Math.round((1024 * CF_ESCALA) / 16) * 16;
+  const altura = Math.round((1280 * CF_ESCALA) / 16) * 16;
+  const fundo = await chamarCloudflare(promptFundo(analise, !!ref), ref ? [ref] : [], largura, altura);
   return { fundo, modelo: CF_IMAGE_MODEL };
 }
 
@@ -466,9 +473,11 @@ async function gerarCloseup(
   tipo: TipoCloseup = "detalhe",
   cor = "",
 ): Promise<Imagem> {
+  // no modo teste a foto do look não vai como referência (cada imagem de entrada consome cota)
+  if (!CF_CLOSEUP_COM_LOOK) look = null;
   const prompt = promptCloseup(tipo, descricao, cor, !!look);
-  // mesma área de 768×864, na proporção pedida, em múltiplos de 16
-  const area = 768 * 864;
+  // mesma área de 768×864 (reduzida por CF_ESCALA), na proporção pedida, em múltiplos de 16
+  const area = 768 * 864 * CF_ESCALA * CF_ESCALA;
   const largura = Math.round(Math.sqrt(area * aspecto) / 16) * 16;
   const altura = Math.round(Math.sqrt(area / aspecto) / 16) * 16;
   return await chamarCloudflare(prompt, look ? [detalhe, look] : [detalhe], largura, altura);
