@@ -37,7 +37,9 @@ async function chamar(acao, payload = {}) {
 export const status = () => chamar('status');
 export const analisar = (imagem) => chamar('analisar', { imagem });
 export const gerar = (imagem, ref, analise) => chamar('gerar', { imagem, ref, analise });
-export const closeup = (detalhe, ref, descricao, aspecto) => chamar('closeup', { detalhe, ref, descricao, aspecto });
+/* extra: { tipo: "tecido" | "maos", cor: "#rrggbb (nome)" } para os close-ups fixos */
+export const closeup = (detalhe, ref, descricao, aspecto, extra = {}) =>
+  chamar('closeup', { detalhe, ref, descricao, aspecto, ...extra });
 
 /* Salva a arte final no Storage e registra no histórico (melhor esforço) */
 export async function salvarFinal(producaoId, blob) {

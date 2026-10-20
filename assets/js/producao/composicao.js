@@ -9,9 +9,9 @@
 export const LAYOUT = {
   /* cartão de cores: fração da largura/altura da arte (à esquerda, entre as polaroids) */
   cartao: { x: 0.055, y: 0.168, w: 0.25, h: 0.355, rotacao: -3 },
-  /* modelo: o corpo ocupa a faixa vertical entre as margens (10% em cima e embaixo),
+  /* modelo: o corpo ocupa a faixa vertical entre as margens (5% em cima e embaixo),
      centralizada; larguraMax é só uma trava para poses muito abertas não saírem da arte */
-  modelo: { margemTopo: 0.1, margemBase: 0.1, larguraMax: 0.92, centroX: 0.5 },
+  modelo: { margemTopo: 0.05, margemBase: 0.05, larguraMax: 0.92, centroX: 0.5 },
   papel: '#e6ddcd',
 };
 
@@ -162,15 +162,19 @@ export function desenharCartaoCores(ctx, W, H, cores) {
 /* posições: centro (fração da arte), largura da moldura (fração da largura), rotação (graus)
    e proporção da foto (largura/altura). Copiadas da arte de referência do "Padrão Creme/Bege":
    3 de cada lado, nas bordas; a modelo é desenhada por cima.
-   A ordem segue a prioridade dos close-ups: o 1º (sapatos) vai embaixo à esquerda. */
+   `fixo` = close-up obrigatório em toda arte ("tecido": tecido ondulado na cor principal da roupa;
+   "maos": mãos com as unhas na cor das da modelo). As demais recebem os detalhes escolhidos,
+   na ordem de prioridade: o 1º (sapatos) vai embaixo à esquerda. */
 export const POLAROIDS = [
-  { x: 0.205, y: 0.845, w: 0.275, rot: -3, aspecto: 0.84 }, // embaixo à esquerda
-  { x: 0.845, y: 0.77, w: 0.29, rot: 3, aspecto: 0.95 },    // embaixo à direita
-  { x: 0.838, y: 0.163, w: 0.3, rot: 4, aspecto: 0.95 },    // alto à direita
-  { x: 0.14, y: 0.617, w: 0.28, rot: 4, aspecto: 1.23 },    // esquerda, abaixo do cartão
-  { x: 0.866, y: 0.43, w: 0.235, rot: 2, aspecto: 0.78 },   // direita, meio
-  { x: 0.225, y: 0.082, w: 0.37, rot: 3, aspecto: 1.57 },   // alto à esquerda, saindo da borda
+  { x: 0.205, y: 0.845, w: 0.275, rot: -3, aspecto: 0.84 },                // embaixo à esquerda
+  { x: 0.845, y: 0.77, w: 0.29, rot: 3, aspecto: 0.95 },                   // embaixo à direita
+  { x: 0.838, y: 0.163, w: 0.3, rot: 4, aspecto: 0.95 },                   // alto à direita
+  { x: 0.14, y: 0.617, w: 0.28, rot: 4, aspecto: 1.23 },                   // esquerda, abaixo do cartão
+  { x: 0.866, y: 0.43, w: 0.235, rot: 2, aspecto: 0.78, fixo: 'maos' },    // direita, meio
+  { x: 0.225, y: 0.082, w: 0.37, rot: 3, aspecto: 1.57, fixo: 'tecido' },  // alto à esquerda, saindo da borda
 ];
+/* quantidade de polaroids que recebem os detalhes escolhidos na análise */
+export const LIVRES = POLAROIDS.filter((p) => !p.fixo).length;
 /* moldura (frações da largura): fina em cima e nas laterais, mais larga embaixo */
 const MOLDURA = { lado: 0.045, base: 0.12, cor: '#ece4d4' };
 
@@ -246,7 +250,10 @@ function desenharPolaroid(ctx, W, H, slot, imagem, rnd) {
 
 export function desenharPolaroids(ctx, W, H, detalhes) {
   const rnd = aleatorio(4242);
-  detalhes.slice(0, POLAROIDS.length).forEach((img, i) => desenharPolaroid(ctx, W, H, POLAROIDS[i], img, rnd));
+  // detalhes[i] vai na POLAROIDS[i]; posição sem imagem fica vazia
+  detalhes.slice(0, POLAROIDS.length).forEach((img, i) => {
+    if (img) desenharPolaroid(ctx, W, H, POLAROIDS[i], img, rnd);
+  });
 }
 
 /* Eixo vertical do corpo (px no recorte): média horizontal da cabeça e do tronco

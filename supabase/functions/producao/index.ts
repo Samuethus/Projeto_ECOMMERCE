@@ -5,7 +5,8 @@
 //   { acao: "status" }                          → limite diário e uso de hoje
 //   { acao: "analisar", imagem }                → peças, 5 cores, tecidos e close-ups
 //   { acao: "gerar", imagem, ref, analise }     → fundo de tecidos do moodboard (conta no limite)
-//   { acao: "closeup", detalhe, ref, descricao } → close-up NOVO de um detalhe, para a polaroid
+//   { acao: "closeup", detalhe, ref, descricao, aspecto?, tipo?, cor? } → close-up NOVO para a polaroid
+//                                                (tipo "tecido" | "maos" = close-ups fixos)
 //
 // `imagem` = { mime: "image/jpeg" | "image/png" | "image/webp", data: "<base64>" }
 // `ref` / `detalhe` = mesma forma, já reduzidos pelo site a menos de 512×512 (exigência do FLUX.2 klein)
@@ -70,6 +71,10 @@ type Analise = {
   estilo_fundo?: "creme" | "tecidos";
   /* caixa = [ymin, xmin, ymax, xmax] normalizada 0–1000 sobre a foto enviada */
   closeups: { descricao: string; caixa: number[] }[];
+  /* área limpa do tecido principal (referência do close-up fixo de tecido ondulado) */
+  tecido_caixa?: number[];
+  /* cor das unhas (close-up fixo de mãos) */
+  unhas?: { hex: string; nome: string; caixa: number[] };
 };
 
 class HttpError extends Error {
@@ -95,22 +100,28 @@ Write every text value in Brazilian Portuguese.
   Include at least one neutral beige linen/cotton texture.
 - tecido_principal: the single most distinctive fabric/print of the main garment, described for an image generator
   (e.g. "algodão off-white com estampa de cavalos caramelo", "seda marrom com bolinhas brancas").
-- closeups: 6 or 7 details of the look that will be CROPPED from this photo for polaroid close-ups.
-  The first 6 items of the list are used in the final art, so ORDER MATTERS.
+- tecido_caixa: bounding box [ymin, xmin, ymax, xmax] normalized to 0-1000 of a clean, flat area of the main garment
+  fabric (no skin, no accessories), at least 150 units wide and tall.
+- unhas: the nail polish of the model. hex = #RRGGBB sampled from the painted nails as they appear in the photo;
+  nome = short colour name in Portuguese (e.g. "nude rosado", "vermelho", "francesinha");
+  caixa = bounding box of the hand that best shows the nails. If the nails are not visible, guess the most likely
+  polish for this look (e.g. a nude) and return caixa as an empty list.
+- closeups: 4 or 5 details of the look that will be CROPPED from this photo for polaroid close-ups.
+  The first 4 items of the list are used in the final art, so ORDER MATTERS.
+  Do NOT include nails nor a plain fabric swatch: those two close-ups are always made separately.
   FIRST look for these priority details, in this order, and include every one that is clearly visible in the photo:
     1. shoes ("sapatos");
-    2. nails / manicure ("unhas");
-    3. earrings ("brincos");
-    4. necklace ("colar");
-    5. bag and its hardware ("bolsa");
-    6. bracelet or watch ("pulseira/relógio");
-    7. rings ("anéis");
-    8. bows ("laços");
-    9. brooches and other accessories — belt, hair clip, scarf ("broches/adereços");
-    10. dress or skirt hem ("barra do vestido/saia");
-    11. sleeve — cuff, puff, ruffle, buttons ("manga").
+    2. earrings ("brincos");
+    3. necklace ("colar");
+    4. bag and its hardware ("bolsa");
+    5. bracelet or watch ("pulseira/relógio");
+    6. rings ("anéis");
+    7. bows ("laços");
+    8. brooches and other accessories — belt, hair clip, scarf ("broches/adereços");
+    9. dress or skirt hem ("barra do vestido/saia");
+    10. sleeve — cuff, puff, ruffle, buttons ("manga").
   Put the priority details found at the top of the list, in the order above.
-  ONLY IF fewer than 6 priority details are visible, complete the list with other details of the look
+  ONLY IF fewer than 4 priority details are visible, complete the list with other details of the look
   (e.g. "estampa da blusa", "textura do jeans"), preferring accessories and textures.
   Never include a detail that is not clearly visible, and avoid the face. For each one give:
     descricao: short label;
@@ -201,8 +212,21 @@ const SCHEMA_ANALISE = {
         required: ["descricao", "caixa"],
       },
     },
+    tecido_caixa: { type: "ARRAY", items: { type: "INTEGER" } },
+    unhas: {
+      type: "OBJECT",
+      properties: {
+        hex: { type: "STRING" },
+        nome: { type: "STRING" },
+        caixa: { type: "ARRAY", items: { type: "INTEGER" } },
+      },
+      required: ["hex", "nome", "caixa"],
+    },
   },
-  required: ["foto_adequada", "problemas", "pecas", "cores", "tecidos_fundo", "tecido_principal", "closeups"],
+  required: [
+    "foto_adequada", "problemas", "pecas", "cores", "tecidos_fundo", "tecido_principal", "closeups",
+    "tecido_caixa", "unhas",
+  ],
 };
 
 // ---------------------------------------------------------------- utilitários
@@ -398,17 +422,51 @@ async function gerarFundo(img: Imagem, ref: Imagem | null, analise: Analise): Pr
 
 /* Close-up de polaroid: imagem NOVA gerada a partir do detalhe recortado (imagem 0)
    e da foto do look inteiro (imagem 1), fiel a cor, material, estampa e ferragens.
-   `aspecto` (largura/altura) = proporção da polaroid onde o close-up será colocado. */
-async function gerarCloseup(detalhe: Imagem, look: Imagem | null, descricao: string, aspecto: number): Promise<Imagem> {
-  const prompt = `
+   `aspecto` (largura/altura) = proporção da polaroid onde o close-up será colocado.
+   tipo "tecido" → tecido ondulado na cor principal; "maos" → mãos com as unhas na cor `cor`. */
+type TipoCloseup = "detalhe" | "tecido" | "maos";
+
+function promptCloseup(tipo: TipoCloseup, descricao: string, cor: string, comLook: boolean): string {
+  if (tipo === "tecido") {
+    return `
+Editorial macro close-up photograph of softly rippling, wavy draped fabric filling the whole frame: ${descricao}.
+The fabric colour is exactly ${cor || "the main colour of the garment"}, the main colour of the garment in image 0,
+with the same material, sheen, weave and print. Deep soft folds and gentle flowing waves catching the light.
+Soft natural studio light, shallow depth of field, warm neutral tones, high-end fashion e-commerce look, photorealistic.
+No people, no body parts, no objects, no text, no logos, no watermark, no frame or border.
+`.trim();
+  }
+  if (tipo === "maos") {
+    return `
+Editorial close-up photograph of a woman's elegant, relaxed hands, cropped tightly${
+      comLook ? ", with exactly the same skin tone as the model in image 1" : ""}.
+Well-groomed manicured nails painted in exactly this colour: ${cor}, same shade, finish and nail shape
+as the nails in image 0. Anatomically correct hands, five fingers each, natural pose, gently resting on or holding
+the fabric of the outfit${comLook ? " shown in image 1" : ""}; rings or bracelets only if worn in the photo.
+Soft natural studio light, shallow depth of field, warm neutral tones, high-end fashion e-commerce look, photorealistic.
+Never show a face. No text, no logos, no watermark, no frame or border.
+`.trim();
+  }
+  return `
 Editorial macro close-up photograph of: ${descricao}.
-Reproduce it exactly as it appears in image 0${look ? " (worn in the outfit shown in image 1)" : ""}:
+Reproduce it exactly as it appears in image 0${comLook ? " (worn in the outfit shown in image 1)" : ""}:
 same colours, material, print, texture, stitching and metal hardware. Fill the frame with the detail.
 When it is a garment print or texture, show the fabric draped or folded in soft light.
 When it is jewellery, a bag or shoes, it may be worn on the body or placed on fabric, cropped tightly.
 Soft natural studio light, shallow depth of field, warm neutral tones, high-end fashion e-commerce look, photorealistic.
 Never show a full face. No text, no logos, no watermark, no frame or border.
 `.trim();
+}
+
+async function gerarCloseup(
+  detalhe: Imagem,
+  look: Imagem | null,
+  descricao: string,
+  aspecto: number,
+  tipo: TipoCloseup = "detalhe",
+  cor = "",
+): Promise<Imagem> {
+  const prompt = promptCloseup(tipo, descricao, cor, !!look);
   // mesma área de 768×864, na proporção pedida, em múltiplos de 16
   const area = 768 * 864;
   const largura = Math.round(Math.sqrt(area * aspecto) / 16) * 16;
@@ -562,7 +620,9 @@ Deno.serve(async (req) => {
         if (!descricao) throw new HttpError(400, "Descreva o detalhe do close-up.");
         const pedido = Number(body.aspecto);
         const aspecto = Number.isFinite(pedido) ? Math.min(2, Math.max(0.5, pedido)) : 768 / 864;
-        const imagem = await gerarCloseup(detalhe, ref, descricao, aspecto);
+        const tipo: TipoCloseup = body.tipo === "tecido" || body.tipo === "maos" ? body.tipo : "detalhe";
+        const cor = String(body.cor ?? "").trim().slice(0, 60);
+        const imagem = await gerarCloseup(detalhe, ref, descricao, aspecto, tipo, cor);
         return json(req, 200, { imagem });
       }
 

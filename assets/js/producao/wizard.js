@@ -3,7 +3,7 @@
    Supabase e o recorte só são carregados quando o wizard é aberto. */
 import { CONFIG, configurado } from './config.js';
 import { arquivoParaImagem, redimensionar, canvasParaPayload, payloadParaSrc, carregarImagem, canvasParaBlob, baixar } from './imagem.js';
-import { comporArte, recortarDetalhe, POLAROIDS } from './composicao.js';
+import { comporArte, recortarDetalhe, POLAROIDS, LIVRES } from './composicao.js';
 
 const raiz = document.getElementById('producao');
 if (raiz) iniciar(raiz);
@@ -243,6 +243,9 @@ function iniciar(raiz) {
       paleta.appendChild(li);
     });
 
+    if (HEX.test(a.unhas?.hex ?? '')) $('[data-unhas-hex]').value = a.unhas.hex.toLowerCase();
+    $('[data-unhas-nome]').value = a.unhas?.nome ?? '';
+
     $('[data-tecidos]').value = a.tecidos_fundo.join('\n');
     $('[data-estilo][value="creme"]').checked = true;
     mostrarTecidos();
@@ -255,7 +258,7 @@ function iniciar(raiz) {
       const li = document.createElement('li');
       li.innerHTML = `
         <label>
-          <input type="checkbox" data-closeup="${i}" ${i < POLAROIDS.length ? 'checked' : ''}>
+          <input type="checkbox" data-closeup="${i}" ${i < LIVRES ? 'checked' : ''}>
           <span class="closeups__thumb"></span>
           <span class="closeups__nome"></span>
         </label>`;
@@ -269,7 +272,7 @@ function iniciar(raiz) {
   function limitarCloseups() {
     const caixas = $$('[data-closeup]');
     const marcadas = caixas.filter((c) => c.checked).length;
-    caixas.forEach((c) => { c.disabled = !c.checked && marcadas >= POLAROIDS.length; });
+    caixas.forEach((c) => { c.disabled = !c.checked && marcadas >= LIVRES; });
   }
   $('[data-closeups]').addEventListener('change', limitarCloseups);
 
@@ -279,6 +282,38 @@ function iniciar(raiz) {
     $('[data-bloco-tecidos]').hidden = estiloEscolhido() !== 'tecidos';
   }
   $$('[data-estilo]').forEach((r) => r.addEventListener('change', mostrarTecidos));
+
+  /* Um pedido por polaroid (null = posição vazia): as fixas sempre entram,
+     as livres recebem os detalhes marcados, em ordem de prioridade. */
+  const HEX = /^#[0-9a-f]{6}$/i;
+  const caixaValida = (c) => Array.isArray(c) && c.length === 4 && c[2] > c[0] && c[3] > c[1];
+  const CAIXA_CENTRO = [350, 300, 650, 700]; // meio do corpo, quando a IA não marcou a área
+
+  function closeupsDaArte(a) {
+    const principal = a.cores[0];
+    const tecido = a.tecido_principal || a.pecas?.[0]?.descricao || 'tecido principal da roupa';
+    const caixaTecido = caixaValida(a.tecido_caixa) ? a.tecido_caixa : CAIXA_CENTRO;
+    const livres = [...a.closeups_escolhidos];
+    return POLAROIDS.map((slot) => {
+      if (slot.fixo === 'tecido') {
+        return {
+          caixa: caixaTecido,
+          descricao: tecido,
+          extra: { tipo: 'tecido', cor: `${principal.hex} (${principal.nome})` },
+        };
+      }
+      if (slot.fixo === 'maos') {
+        const nome = a.unhas.nome || 'esmalte';
+        return {
+          caixa: caixaValida(a.unhas.caixa) ? a.unhas.caixa : caixaTecido,
+          descricao: `mãos com unhas ${nome}`,
+          extra: { tipo: 'maos', cor: `${a.unhas.hex} (${nome})` },
+        };
+      }
+      const c = livres.shift();
+      return c ? { caixa: c.caixa, descricao: c.descricao } : null;
+    });
+  }
 
   function lerEditor() {
     const linhas = (sel) => $(sel).value.split('\n').map((s) => s.trim()).filter(Boolean).slice(0, 6);
@@ -292,6 +327,11 @@ function iniciar(raiz) {
       cores,
       estilo_fundo: estiloEscolhido(),
       tecidos_fundo: linhas('[data-tecidos]'),
+      unhas: {
+        ...estado.analise.unhas,
+        hex: $('[data-unhas-hex]').value,
+        nome: $('[data-unhas-nome]').value.trim(),
+      },
       closeups_escolhidos: closeups,
     };
   }
@@ -318,12 +358,10 @@ function iniciar(raiz) {
     try {
       // referências para a IA: o FLUX.2 klein exige imagens menores que 512×512
       const ref = canvasParaPayload(redimensionar(estado.foto, CONFIG.referenciaMaxLado));
-      const escolhidos = analise.closeups_escolhidos;
+      const pedidos = closeupsDaArte(analise);
       let prontos = 0;
       const progresso = () => {
-        texto.textContent = escolhidos.length
-          ? `Gerando o fundo e os close-ups… (${prontos}/${escolhidos.length + 1})`
-          : 'Gerando o fundo…';
+        texto.textContent = `Gerando o fundo e os close-ups… (${prontos}/${pedidos.filter(Boolean).length + 1})`;
       };
       const contar = (p) => p.finally(() => { prontos++; progresso(); });
       progresso();
@@ -331,14 +369,15 @@ function iniciar(raiz) {
       // fundo e close-ups em paralelo; um close-up que falhar vira recorte da foto
       const pedidoFundo = contar(estado.api.gerar(estado.envio, ref, analise));
       // cada close-up já nasce na proporção da polaroid em que será colocado
-      const pedidosCloseups = escolhidos.map((c, i) => {
+      const pedidosCloseups = pedidos.map((p, i) => {
+        if (!p) return null;
         const aspecto = POLAROIDS[i].aspecto;
-        const detalhe = canvasParaPayload(redimensionar(recortarDetalhe(estado.foto, c.caixa, aspecto), CONFIG.referenciaMaxLado));
-        return contar(estado.api.closeup(detalhe, ref, c.descricao, aspecto))
+        const detalhe = canvasParaPayload(redimensionar(recortarDetalhe(estado.foto, p.caixa, aspecto), CONFIG.referenciaMaxLado));
+        return contar(estado.api.closeup(detalhe, ref, p.descricao, aspecto, p.extra))
           .then((res) => carregarImagem(payloadParaSrc(res.imagem)))
           .catch((e) => {
-            console.warn('Close-up não gerado, usando recorte da foto:', c.descricao, e);
-            return recortarDetalhe(estado.foto, c.caixa, aspecto);
+            console.warn('Close-up não gerado, usando recorte da foto:', p.descricao, e);
+            return recortarDetalhe(estado.foto, p.caixa, aspecto);
           });
       });
 
